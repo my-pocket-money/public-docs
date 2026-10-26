@@ -1,0 +1,92 @@
+---
+title: Transfers
+description: Send money from one of your Accounts to a counterparty, another Pocket customer, or another of your Accounts.
+sidebar:
+  order: 2
+---
+
+import OperationList from '../../../components/OperationList.astro';
+
+A Transfer is a transaction that sends money from one of your Accounts to:
+
+1. A counterparty, which is a bank account outside Pocket.
+2. Another Pocket customer.
+3. Another of your Accounts.
+
+The money always leaves your Account in USD.
+
+## Types
+
+Each type has its own create endpoint, `POST /v1/transfers/{type}`.
+
+- **`internal`** sends USD to another Pocket customer, by `customer_id`, or to another of your Accounts, by `account_id`. A customer receives it in their default Account. The Transfer's `method` is `internal`.
+- **`pk_bank_account`** sends to a counterparty's bank or wallet account in Pakistan. Pocket converts the USD and pays out PKR over Inter Bank Funds Transfer, so the `method` is `ibft`.
+- **`us_bank_account`** sends USD to a counterparty's checking or savings account at a US bank. The `method` is `ach`.
+
+Transfers in a list can also show the `method` `wire` or `onchain`. These record earlier activity on your Account; the API can't create them.
+
+## Counterparties
+
+A counterparty is a saved destination outside your Accounts, with its own `tcp_…` ID. It belongs to you, and you send to it by its ID.
+
+Available counterparty types:
+
+| Type | Account | Paid in |
+| --- | --- | --- |
+| `pk_bank_account` | A bank or wallet account in Pakistan | PKR |
+| `us_bank_account` | A checking or savings account at a US bank | USD |
+
+Each counterparty goes through a series of automated checks. At times, these checks trigger a manual review. Only an `approved` counterparty can receive transfers; sending to any other returns `counterparty_not_approved`.
+
+- `in_review`: it's in manual review. It can't receive transfers yet.
+- `approved`: it can receive transfers.
+- `declined`: Pocket won't send to it. `status_reason` says why when known.
+- `deleted`: you deleted it, or an update replaced it.
+
+Counterparty details differ by type, so you create and update a counterparty under its type, at `/v1/transfers/{type}/counterparties`. You list, retrieve and delete counterparties of any type at `/v1/counterparties`.
+
+A counterparty's details can't be edited in place. An update creates a new counterparty, sets its `replaces_counterparty_id` to the old one, and marks the old one `deleted`. Account numbers are returned masked to their last four characters.
+
+Creating a counterparty takes no `Idempotency-Key`. Creating one that already exists returns `409` with reason `conflict` and the existing counterparty's ID in `existing_id`.
+
+Reading counterparties requires `counterparties:read`. Creating, updating and deleting them requires `counterparties:write`.
+
+## Sending to a counterparty
+
+Every transfer to a counterparty is created from a quote, which fixes its fee, rate and payout.
+
+1. Fetch the price inputs. `GET /v1/transfers/{type}/rate` returns your rate, and `GET /v1/transfers/{type}/options` returns your delivery options, each with its fee schedule. Both change rarely, so you can fetch them once and show a price as the amount is typed.
+2. Quote the transfer. `POST /v1/transfers/{type}/quotes` with the delivery option, the `payin_amount` and the rate's `id` returns the exact fee and payout. A rate that is no longer yours returns `fx_rate_expired`; fetch it again.
+3. Send it. `POST /v1/transfers/{type}` with the quote's `id` and the `counterparty_id`. A transfer to Pakistan also needs a `purpose_code` from `GET /v1/transfers/pk_bank_account/purpose_codes`.
+
+A quote can be used by one transfer, within five minutes. An expired quote returns `quote_expired`.
+
+`payin_amount` is the USD that leaves your Account, fee included. Pocket computes the rest:
+
+- `fee = base_amount + min(percentage% × payin_amount, cap_amount)`, rounded half away from zero to two decimal places.
+- `payout = (payin_amount − fee) × rate`, rounded half to even to two decimal places. A USD payout's rate is `1`.
+
+## Following a transfer
+
+Creating any transfer requires `transfers:write` and an `Idempotency-Key` header. A retry with the same key within 24 hours returns the original response and sends nothing.
+
+A create returns `201` with a `Location` of `/v1/transactions/{transaction_id}?account_id={source_account_id}`. `201` means Pocket accepted the transfer, not that it settled.
+
+A Transfer is a transaction, so read its current state with `GET /v1/transactions/{transaction_id}`, which requires `transactions:read`. Its `status` is one of:
+
+- `pending`: accepted, not yet settled.
+- `settled`: posted to the balance.
+- `failed`: it did not complete.
+- `voided`: Pocket accepted it, but it will not settle.
+
+`GET /v1/transactions?kind=transfer` lists your transfers, newest first. It filters by Account, method, status, amount and time, and also requires `transactions:read`.
+
+## API reference
+
+### Transfers
+
+<OperationList spec="openapi/relay/release/openapi.yaml" reference="/relay/api/" tag="Transfers" />
+
+### Counterparties
+
+<OperationList spec="openapi/relay/release/openapi.yaml" reference="/relay/api/" tag="Counterparties" />

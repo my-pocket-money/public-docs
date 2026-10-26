@@ -1,0 +1,17 @@
+extends:
+  - recommended
+
+rules:
+  info-license: off
+  no-unused-components: off
+
+# The overview, workflow guides and changelog are pages on the docs site
+# (src/content/docs/relay/); only resource tag descriptions live here.
+decorators:
+  tag-description-override:
+    tagNames:
+      Transactions: release/transactions.md
+      Transfers: release/transfers.md
+      Deposits: release/deposits.md
+      Batch Transfers: release/batches.md
+  remove-unused-components: on

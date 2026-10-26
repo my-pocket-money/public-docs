@@ -1,0 +1,9 @@
+---
+import Default from '@astrojs/starlight/components/Sidebar.astro';
+
+// Starlight's own sidebar, without the topic list starlight-sidebar-topics
+// adds above it: the header's tabs switch sections instead. The plugin's
+// middleware still narrows the entries to the current topic.
+---
+
+<Default><slot /></Default>

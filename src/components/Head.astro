@@ -1,0 +1,34 @@
+---
+import Default from '@astrojs/starlight/components/Head.astro';
+---
+
+<Default />
+
+<script is:inline>
+	// Scalar keeps its own color mode as a dark-mode or light-mode class on
+	// <body>. Follow Starlight's theme picker instead, which sets data-theme on
+	// <html>, and put the class back whenever Scalar changes it.
+	(() => {
+		const sync = () => {
+			if (!document.body) return;
+			const dark = document.documentElement.dataset.theme === 'dark';
+			const want = dark ? 'dark-mode' : 'light-mode';
+			const drop = dark ? 'light-mode' : 'dark-mode';
+			if (document.body.classList.contains(drop)) document.body.classList.remove(drop);
+			if (!document.body.classList.contains(want)) document.body.classList.add(want);
+		};
+		const observer = new MutationObserver(sync);
+		const start = () => {
+			sync();
+			observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+			observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+		};
+		if (document.body) start();
+		else document.addEventListener('DOMContentLoaded', start, { once: true });
+		// Starlight's client router swaps <body> on navigation.
+		document.addEventListener('astro:after-swap', () => {
+			observer.disconnect();
+			start();
+		});
+	})();
+</script>

@@ -1,0 +1,555 @@
+/* Pocket Money Docs. Colors follow the Relay dashboard
+   (my-pocket-money/pocket-relay src/styles.css): neutrals tinted to the brand
+   violet's hue, 286. Text is Inter, drawn for reading on screens; the
+   dashboard's Outfit sets only the wordmark. Starlight's styles sit in cascade
+   layers, so these unlayered rules win without extra specificity. */
+
+/* ---------------------------------------------------------------- Tokens */
+
+:root {
+	--sl-font: 'Inter Variable';
+	--sl-font-mono: 'JetBrains Mono Variable';
+
+	/* Dark. Starlight names its scale from the dark theme: white is text,
+	   black is the page. */
+	--sl-color-white: oklch(0.985 0 0);
+	--sl-color-gray-1: oklch(0.92 0.008 286);
+	--sl-color-gray-2: oklch(0.82 0.012 286);
+	--sl-color-gray-3: oklch(0.705 0.015 286);
+	--sl-color-gray-4: oklch(0.52 0.016 286);
+	--sl-color-gray-5: oklch(0.29 0.018 286);
+	--sl-color-gray-6: oklch(0.205 0.016 286);
+	--sl-color-black: oklch(0.155 0.014 286);
+
+	--sl-color-accent-low: oklch(0.27 0.06 286.6);
+	--sl-color-accent: oklch(0.69 0.205 286.6);
+	--sl-color-accent-high: oklch(0.86 0.08 286.6);
+
+	--sl-color-text: var(--sl-color-white);
+	--sl-color-bg-nav: var(--sl-color-black);
+	--sl-color-bg-sidebar: var(--sl-color-black);
+	--sl-color-bg-inline-code: var(--sl-color-gray-6);
+	--sl-color-hairline: var(--sl-color-gray-5);
+	--sl-color-hairline-light: var(--sl-color-gray-5);
+	--sl-color-hairline-shade: var(--sl-color-gray-5);
+	--pm-surface: var(--sl-color-gray-6);
+
+	/* Type: a 16px body on a 1.75 line, headings tightened as they grow. */
+	--sl-line-height: 1.75;
+	--sl-line-height-headings: 1.2;
+	--sl-text-h1: 2.25rem;
+	--sl-text-h2: 1.5rem;
+	--sl-text-h3: 1.25rem;
+	--sl-text-h4: 1.0625rem;
+	--sl-content-width: 46rem;
+
+	/* Header: the bar with title and search, then the tab row. */
+	--pm-bar-height: 3.5rem;
+	--pm-tabs-height: 2.75rem;
+	--sl-nav-height: calc(var(--pm-bar-height) + var(--pm-tabs-height));
+	--sl-nav-pad-y: 0.625rem;
+}
+
+@media (min-width: 50rem) {
+	:root {
+		--pm-bar-height: 4rem;
+	}
+}
+
+:root[data-theme='light'] {
+	--sl-color-white: oklch(0.172 0.012 286);
+	--sl-color-gray-1: oklch(0.27 0.012 286);
+	--sl-color-gray-2: oklch(0.37 0.014 286);
+	--sl-color-gray-3: oklch(0.526 0.018 286);
+	--sl-color-gray-4: oklch(0.63 0.016 286);
+	--sl-color-gray-5: oklch(0.86 0.01 286);
+	--sl-color-gray-6: oklch(0.928 0.008 286);
+	--sl-color-gray-7: oklch(0.975 0.004 286);
+	--sl-color-black: oklch(1 0 0);
+
+	--sl-color-accent-low: oklch(0.956 0.025 287);
+	--sl-color-accent: oklch(0.603 0.243 286.6);
+	--sl-color-accent-high: oklch(0.45 0.21 286.6);
+
+	--sl-color-text: var(--sl-color-gray-1);
+	--sl-color-text-accent: var(--sl-color-accent-high);
+	--sl-color-bg-nav: var(--sl-color-black);
+	--sl-color-bg-sidebar: var(--sl-color-black);
+	--sl-color-bg-inline-code: var(--sl-color-gray-7);
+	--sl-color-hairline: var(--sl-color-gray-6);
+	--sl-color-hairline-light: var(--sl-color-gray-6);
+	--sl-color-hairline-shade: var(--sl-color-gray-6);
+	--pm-surface: var(--sl-color-gray-7);
+}
+
+body {
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+	font-optical-sizing: auto;
+}
+
+/* ---------------------------------------------------------------- Header */
+
+header.header {
+	display: flex;
+	flex-direction: column;
+	padding-block: 0;
+}
+
+.pm-bar {
+	flex: none;
+	height: var(--pm-bar-height);
+	padding-block: var(--sl-nav-pad-y);
+}
+
+.pm-tabs {
+	flex: none;
+	display: flex;
+	gap: 1.75rem;
+	height: var(--pm-tabs-height);
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.pm-tabs a {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	border-block: 2px solid transparent;
+	color: var(--sl-color-gray-3);
+	font-size: var(--sl-text-sm);
+	font-weight: 500;
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+.pm-tabs a:hover {
+	color: var(--sl-color-white);
+}
+
+.pm-tabs a[aria-current='page'] {
+	border-block-end-color: var(--sl-color-accent);
+	color: var(--sl-color-text-accent);
+}
+
+.pm-tabs svg {
+	width: 1rem;
+	height: 1rem;
+	flex: none;
+}
+
+/* Center the menu button on the bar, not on the whole two-row header. */
+button.sl-menu-button {
+	top: calc((var(--pm-bar-height) - var(--sl-menu-button-size)) / 2);
+}
+
+.site-title {
+	gap: 0.625rem;
+	color: var(--sl-color-white);
+	font-family: 'Outfit Variable', var(--__sl-font);
+	font-size: 1.125rem;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+
+.site-title img {
+	height: 1.75rem;
+	width: auto;
+}
+
+site-search button[data-open-modal] {
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: 0.75rem;
+	background-color: var(--sl-color-black);
+	color: var(--sl-color-gray-3);
+}
+
+site-search button[data-open-modal]:hover {
+	border-color: var(--sl-color-gray-4);
+	color: var(--sl-color-white);
+}
+
+@media (min-width: 50rem) {
+	site-search button[data-open-modal] {
+		width: 100%;
+		max-width: 26rem;
+		padding-inline: 0.875rem;
+	}
+}
+
+/* ---------------------------------------------------------------- Sidebar */
+
+.sidebar-content {
+	padding-top: 1.25rem;
+}
+
+.sidebar-content a {
+	border-radius: 0.5rem;
+	padding: 0.375rem 0.75rem;
+	color: var(--sl-color-gray-2);
+	font-size: var(--sl-text-sm);
+}
+
+.sidebar-content a:hover {
+	color: var(--sl-color-white);
+}
+
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='page']:hover {
+	background-color: var(--sl-color-accent-low);
+	color: var(--sl-color-text-accent);
+	font-weight: 600;
+}
+
+.sidebar-content .large {
+	color: var(--sl-color-white);
+	font-size: var(--sl-text-sm);
+	font-weight: 600;
+}
+
+.sidebar-content a .large {
+	color: inherit;
+	font-weight: inherit;
+}
+
+/* ---------------------------------------------------------------- Content */
+
+.sl-markdown-content :is(h1, h2, h3, h4, h5, h6),
+.content-panel h1 {
+	color: var(--sl-color-white);
+	font-weight: 600;
+	letter-spacing: -0.02em;
+}
+
+.sl-markdown-content a {
+	color: var(--sl-color-text-accent);
+	text-decoration-color: color-mix(in oklch, currentColor 35%, transparent);
+	text-underline-offset: 0.2em;
+}
+
+.sl-markdown-content a:hover {
+	text-decoration-color: currentColor;
+}
+
+.sl-markdown-content strong {
+	color: var(--sl-color-white);
+	font-weight: 600;
+}
+
+.sl-markdown-content code:not(:where(.not-content *, pre *)) {
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: 0.375rem;
+	padding: 0.125em 0.375em;
+	font-size: 0.85em;
+}
+
+.sl-markdown-content table {
+	font-size: var(--sl-text-sm);
+}
+
+.sl-markdown-content :is(th, td) {
+	border-color: var(--sl-color-hairline);
+}
+
+/* ---------------------------------------------------------------- Home */
+
+.pm-products {
+	display: grid;
+	gap: 1rem;
+	margin-top: 2rem;
+}
+
+@media (min-width: 50rem) {
+	.pm-products {
+		grid-template-columns: 1fr 1fr;
+	}
+}
+
+.pm-product {
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: 0.75rem;
+	padding: 1.5rem;
+}
+
+.pm-product h2 {
+	margin: 0;
+	color: var(--sl-color-white);
+	font-size: 1.25rem;
+	font-weight: 600;
+	letter-spacing: -0.02em;
+}
+
+.pm-product p {
+	margin: 0.5rem 0 1.25rem;
+	color: var(--sl-color-gray-2);
+}
+
+.pm-product ul {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem 1.25rem;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.pm-product a {
+	color: var(--sl-color-text-accent);
+	font-weight: 500;
+	text-decoration: none;
+}
+
+.pm-product a:hover {
+	text-decoration: underline;
+	text-underline-offset: 0.2em;
+}
+
+.pm-soon {
+	color: var(--sl-color-gray-3);
+	font-size: var(--sl-text-sm);
+}
+
+/* ---------------------------------------------------------------- API reference */
+
+/* Scalar brings its own title and sidebar, so the page drops Starlight's
+   title panel and gives Scalar the full width under the header. */
+main:has([data-cdn]) .content-panel:has(h1#_top) {
+	display: none;
+}
+
+main:has([data-cdn]) .content-panel {
+	padding: 0;
+	border: 0;
+}
+
+main:has([data-cdn]) .sl-container {
+	max-width: none;
+}
+
+/* Scalar themes itself through variables on body.light-mode and
+   body.dark-mode (Head.astro keeps them in step with Starlight). Map them
+   onto the site's tokens. */
+body.light-mode,
+body.dark-mode {
+	--scalar-custom-header-height: var(--sl-nav-height);
+	--scalar-font: var(--__sl-font);
+	--scalar-font-code: var(--__sl-font-mono);
+	--scalar-radius: 0.5rem;
+	--scalar-radius-lg: 0.75rem;
+	--scalar-radius-xl: 0.75rem;
+
+	--scalar-color-1: var(--sl-color-white);
+	--scalar-color-2: var(--sl-color-text);
+	--scalar-color-3: var(--sl-color-gray-3);
+	--scalar-color-accent: var(--sl-color-text-accent);
+	--scalar-background-1: var(--sl-color-black);
+	--scalar-background-2: var(--pm-surface);
+	--scalar-background-3: var(--sl-color-hairline);
+	--scalar-background-accent: var(--sl-color-accent-low);
+	--scalar-border-color: var(--sl-color-hairline);
+
+	--scalar-sidebar-background-1: var(--sl-color-black);
+	--scalar-sidebar-color-1: var(--sl-color-white);
+	--scalar-sidebar-color-2: var(--sl-color-gray-2);
+	--scalar-sidebar-border-color: var(--sl-color-hairline);
+	--scalar-sidebar-item-hover-background: var(--pm-surface);
+	--scalar-sidebar-item-hover-color: var(--sl-color-white);
+	--scalar-sidebar-item-active-background: var(--sl-color-accent-low);
+	--scalar-sidebar-color-active: var(--sl-color-text-accent);
+	--scalar-sidebar-search-background: var(--sl-color-black);
+	--scalar-sidebar-search-border-color: var(--sl-color-hairline);
+	--scalar-sidebar-search-color: var(--sl-color-gray-3);
+}
+
+/* ---------------------------------------------------------------- Page chrome */
+
+/* One continuous page: no rule between the title and the body. */
+.content-panel + .content-panel {
+	border-top: 0;
+}
+
+.content-panel:has(h1#_top) {
+	padding-bottom: 0;
+}
+
+/* Nested sidebar groups indent without a rule. */
+.sidebar-content ul ul li {
+	border-inline-start: 0;
+}
+
+starlight-toc h2,
+mobile-starlight-toc h2 {
+	color: var(--sl-color-white);
+	font-size: var(--sl-text-sm);
+	font-weight: 600;
+}
+
+starlight-toc a {
+	color: var(--sl-color-gray-3);
+}
+
+starlight-toc a[aria-current='true'] {
+	color: var(--sl-color-text-accent);
+}
+
+/* Center the search in the viewport, as one fixed grid on every page.
+   Starlight sizes its columns by whether the page has a sidebar, which moved
+   the search between pages. */
+@media (min-width: 50rem) {
+	.pm-bar > div.header {
+		grid-template-columns: 1fr minmax(16rem, 26rem) 1fr;
+	}
+
+	.pm-bar > div.header > .right-group {
+		justify-self: end;
+	}
+}
+
+body.light-mode,
+body.dark-mode {
+	--scalar-sidebar-width: var(--sl-sidebar-width);
+}
+
+/* Scalar's sidebar method labels as small tinted pills before the name. The
+   tint follows each method's own color. */
+.t-doc__sidebar .sidebar-heading-type {
+	order: -1;
+	align-self: center;
+	min-width: 2.75rem;
+	height: auto;
+	margin: 0 0.625rem 0 0;
+	padding: 0.125rem 0.375rem;
+	border-radius: 0.375rem;
+	background-color: color-mix(in oklch, currentColor 14%, transparent);
+	font-family: var(--__sl-font-mono);
+	font-size: 0.625rem;
+	font-weight: 600;
+	line-height: 1;
+	text-align: center;
+}
+
+.t-doc__sidebar a > .scalar-sidebar-indent {
+	order: -2;
+}
+
+/* Code blocks. Set through Expressive Code's variables rather than its
+   styleOverrides config, which breaks its stylesheet in `astro dev`. */
+.expressive-code {
+	--ec-brdRad: 0.75rem;
+	--ec-brdCol: var(--sl-color-hairline);
+	--ec-codeFontSize: 0.8125rem;
+	--ec-codeLineHt: 1.7;
+}
+
+/* ---------------------------------------------------------------- Operation lists */
+
+/* OperationList.astro: one row per endpoint, linking into the API reference.
+   Method pills match the reference's sidebar. */
+.pm-operations {
+	margin: 1rem 0 0;
+	padding: 0;
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: 0.75rem;
+	list-style: none;
+	overflow: hidden;
+}
+
+.pm-operations li + li {
+	border-top: 1px solid var(--sl-color-hairline);
+}
+
+.pm-operations a {
+	display: grid;
+	grid-template-columns: 3.75rem 1fr;
+	column-gap: 0.75rem;
+	align-items: baseline;
+	padding: 0.625rem 1rem;
+	color: var(--sl-color-white);
+	text-decoration: none;
+}
+
+.pm-operations a:hover {
+	background-color: var(--pm-surface);
+}
+
+.pm-operations code {
+	grid-column: 2;
+	color: var(--sl-color-gray-3);
+	font-family: var(--__sl-font-mono);
+	font-size: 0.8125rem;
+	overflow-wrap: anywhere;
+}
+
+.pm-operation-summary {
+	font-size: var(--sl-text-sm);
+	font-weight: 500;
+}
+
+.pm-method {
+	grid-row: span 2;
+	justify-self: start;
+	padding: 0.125rem 0.375rem;
+	border-radius: 0.375rem;
+	background-color: color-mix(in oklch, currentColor 14%, transparent);
+	font-family: var(--__sl-font-mono);
+	font-size: 0.6875rem;
+	font-weight: 600;
+	line-height: 1.4;
+}
+
+.pm-method--get {
+	color: oklch(0.6 0.14 240);
+}
+
+.pm-method--post {
+	color: oklch(0.6 0.15 150);
+}
+
+.pm-method--patch,
+.pm-method--put {
+	color: oklch(0.68 0.15 70);
+}
+
+.pm-method--delete {
+	color: oklch(0.6 0.19 25);
+}
+
+/* Previous and next links: a small muted label over the page title, at body
+   size rather than Starlight's 2xl. */
+.pagination-links {
+	gap: 0.75rem;
+}
+
+.pagination-links a {
+	gap: 0.75rem;
+	padding: 0.75rem 1rem;
+	border-color: var(--sl-color-hairline);
+	border-radius: 0.75rem;
+	box-shadow: none;
+	color: var(--sl-color-gray-3);
+	font-size: var(--sl-text-xs);
+	line-height: 1.5;
+}
+
+.pagination-links a:hover {
+	border-color: var(--sl-color-accent);
+}
+
+.pagination-links .link-title {
+	color: var(--sl-color-white);
+	font-size: var(--sl-text-sm);
+	font-weight: 600;
+	line-height: 1.5;
+}
+
+.pagination-links svg {
+	width: 1rem;
+	height: 1rem;
+	color: var(--sl-color-gray-3);
+}
+
+/* Scalar's intro "Client Libraries" card sets one language for every code
+   sample. Each sample has its own language menu, so the card goes. */
+.scalar-reference-intro-clients {
+	display: none;
+}

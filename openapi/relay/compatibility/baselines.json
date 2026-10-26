@@ -1,0 +1,13 @@
+{
+  "api_majors": [
+    {
+      "api_major": 1,
+      "contract": "release/openapi.yaml",
+      "baseline": {
+        "kind": "development",
+        "path": "compatibility/v1/openapi.yaml",
+        "ref": ""
+      }
+    }
+  ]
+}
