@@ -1,3 +1,10 @@
+---
+title: Run a payroll batch
+description: Submit an asynchronous Batch of payments to employee Customers and reconcile its items.
+sidebar:
+  order: 4
+---
+
 Submit one asynchronous Batch from the authenticated business Customer to its
 employee Customers:
 

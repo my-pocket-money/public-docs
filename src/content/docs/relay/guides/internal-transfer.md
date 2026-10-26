@@ -1,3 +1,10 @@
+---
+title: Send money to another Pocket customer
+description: Create an internal transfer to another Pocket Customer and confirm its outcome.
+sidebar:
+  order: 5
+---
+
 Create an internal transfer from the authenticated Customer to another Pocket
 Customer using a key with `transfers:write`:
 

@@ -1,3 +1,11 @@
+---
+title: Relay API
+description: What the Relay API covers, its environments, and the rules every request follows, from authentication to idempotency, errors and settlement.
+sidebar:
+  label: Overview
+  order: 1
+---
+
 The Relay API lets Pocket Customers manage Accounts and recipients, move
 money, submit Batches of transfers, and reconcile Account-relative balances
 and activity.
@@ -13,7 +21,8 @@ and activity.
   and reconciliation.
 
 Pocket publishes the Relay API as an OpenAPI specification rather than client
-SDKs.
+SDKs. Browse it in the [API reference](/relay/api/), or download
+[`openapi.yaml`](/relay/openapi.yaml) to generate a client.
 
 ## API surface
 
@@ -32,10 +41,10 @@ release candidate; it does not establish what is deployed to production.
 
 ## Environments
 
-| Environment | API base URL | Documentation |
-| --- | --- | --- |
-| Sandbox | `https://api.relay.sandbox.pocketmoney.global` | [Sandbox docs](https://docs.sandbox.relay.pocketmoney.global) |
-| Production | `https://api.relay.pocketmoney.global` | [Production docs](https://docs.relay.pocketmoney.global) |
+| Environment | API base URL |
+| --- | --- |
+| Sandbox | `https://api.relay.sandbox.pocketmoney.global` |
+| Production | `https://api.relay.pocketmoney.global` |
 
 Use a key issued in the environment you are calling. Do not use a production
 key or production funds for Sandbox tests. Paths and JSON examples below are

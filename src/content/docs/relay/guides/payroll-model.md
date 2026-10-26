@@ -1,3 +1,10 @@
+---
+title: Payroll integration model
+description: How a payroll integration uses Customers, Recipients, Accounts and Batches, and the scopes each step needs.
+sidebar:
+  order: 1
+---
+
 A payroll integration uses an API key for one active, unblocked business
 Customer. That Customer owns the Recipient roster and the source Accounts,
 and submits each Batch. Employees are destination Customers, not Accounts or

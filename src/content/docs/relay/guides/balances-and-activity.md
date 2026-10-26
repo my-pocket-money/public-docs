@@ -1,3 +1,10 @@
+---
+title: Read balances and activity
+description: Find a Customer's Accounts, read their balances, and reconcile transactions, transfers and deposits.
+sidebar:
+  order: 3
+---
+
 Each Account holds USD and has its own Account ID. Accounts belong to the Customer
 attached to your API key. A Customer can have more than one Account in the same
 currency. Use `GET /v1/accounts` (`accounts:read`) to discover them and

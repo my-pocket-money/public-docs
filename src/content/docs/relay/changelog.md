@@ -1,3 +1,10 @@
+---
+title: Changelog
+description: Changes to the Relay API contract, by release.
+sidebar:
+  order: 3
+---
+
 ## 0.6.1 — Sandbox release candidate
 
 ### Breaking changes

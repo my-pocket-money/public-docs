@@ -1,3 +1,10 @@
+---
+title: Set up an employee for payroll
+description: Add an employee to a business Customer's recipient roster and keep the destination Customer ID for payments.
+sidebar:
+  order: 2
+---
+
 Add each employee to the authenticated business Customer's recipient roster.
 The Recipient has its own `rcp_…` ID for roster management. Its linked
 `customer_id` is the destination to use in a Batch; never send the Recipient ID

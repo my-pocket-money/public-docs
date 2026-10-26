@@ -25,7 +25,7 @@ function workflowMatrix() {
 function resetBaseline(rawMajor) {
   const apiMajor = Number(rawMajor);
   if (!Number.isInteger(apiMajor)) {
-    fail("usage: npm run baseline:reset -- <api-major>");
+    fail("usage: pnpm baseline:reset <api-major>");
   }
 
   const entry = config.api_majors.find((candidate) => candidate.api_major === apiMajor);

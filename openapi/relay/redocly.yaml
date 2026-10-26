@@ -5,21 +5,13 @@ rules:
   info-license: off
   no-unused-components: off
 
+# The overview, workflow guides and changelog are pages on the docs site
+# (src/content/docs/relay/); only resource tag descriptions live here.
 decorators:
-  info-description-override:
-    filePath: release/overview.md
   tag-description-override:
     tagNames:
-      Payroll integration model: release/payroll-model.md
-      Set up an employee for payroll: release/payroll-recipient.md
-      Run a payroll batch: release/payroll-batch.md
-      Send money to another Pocket customer: release/internal-transfer.md
-      Read balances and activity: release/balances-and-activity.md
       Transactions: release/transactions.md
       Transfers: release/transfers.md
       Deposits: release/deposits.md
       Batch Transfers: release/batches.md
-      Changelog: release/changelog.md
-  remove-x-internal:
-    internalFlagProperty: x-release-status
   remove-unused-components: on
