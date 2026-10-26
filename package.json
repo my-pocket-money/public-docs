@@ -1,0 +1,7 @@
+{
+  "name": "public-docs",
+  "private": true,
+  "scripts": {
+    "build": "rm -rf dist && cp -R placeholder dist"
+  }
+}

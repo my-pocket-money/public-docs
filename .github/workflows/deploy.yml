@@ -25,26 +25,7 @@ env:
   IMAGE: us-west1-docker.pkg.dev/pm-public-docs/public-docs/public-docs:${{ github.sha }}
 
 jobs:
-  # The repository has no site yet. Until it has a package.json, a push says so
-  # instead of failing the deploy. Remove this job once the site lands.
-  site:
-    runs-on: ubuntu-latest
-    outputs:
-      ready: ${{ steps.check.outputs.ready }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - id: check
-        run: |
-          if [ -f package.json ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::No package.json yet, so there is no site to deploy."
-          fi
-
   deploy:
-    needs: site
-    if: needs.site.outputs.ready == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
