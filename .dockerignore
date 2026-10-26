@@ -1,4 +1,5 @@
 .astro
 .git
 dist
+gha-creds-*.json
 node_modules
