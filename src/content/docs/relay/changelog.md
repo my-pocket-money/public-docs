@@ -51,9 +51,9 @@ send transfers to: a `pk_bank_account` in Pakistan, paid in PKR, or a
 | List available purpose codes that can be used when transferring funds to a PK bank account | `GET /v1/transfers/pk_bank_account/purpose_codes` |
 | Request a quote for transferring PKR to a PK bank account | `POST /v1/transfers/pk_bank_account/quotes` |
 | Send USD to a Pakistani bank account | `POST /v1/transfers/pk_bank_account` |
-| Retrieve the Customer's USD rate | `GET /v1/transfers/us_bank_account/rate` |
-| List US bank account delivery options | `GET /v1/transfers/us_bank_account/options` |
-| Quote a transfer to a US bank account | `POST /v1/transfers/us_bank_account/quotes` |
+| Retrieve USD rate | `GET /v1/transfers/us_bank_account/rate` |
+| List available delivery options to a US bank account | `GET /v1/transfers/us_bank_account/options` |
+| Request a quote for transferring USD to a US bank account | `POST /v1/transfers/us_bank_account/quotes` |
 | Send USD to a US bank account | `POST /v1/transfers/us_bank_account` |
 
 Prices are per Customer. `GET /v1/transfers/{type}/rate` and

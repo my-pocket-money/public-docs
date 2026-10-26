@@ -1911,7 +1911,7 @@ paths:
     get:
       tags:
         - Transfers
-      summary: Retrieve the Customer's USD rate
+      summary: Retrieve USD rate
       description: |
         **Required scope:** `transfers:read`.
 
@@ -1937,7 +1937,7 @@ paths:
     get:
       tags:
         - Transfers
-      summary: List US bank account delivery options
+      summary: List available delivery options to a US bank account
       description: |
         **Required scope:** `transfers:read`.
 
@@ -1962,7 +1962,7 @@ paths:
     post:
       tags:
         - Transfers
-      summary: Quote a transfer to a US bank account
+      summary: Request a quote for transferring USD to a US bank account
       description: |
         **Required scope:** `transfers:read`.
 
