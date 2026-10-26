@@ -16,7 +16,7 @@ info:
     name: Pocket
 servers:
   - url: https://api.relay.sandbox.pocketmoney.global
-    description: Sandbox — 0.6.1 release candidate
+    description: Sandbox — 0.7.0 release candidate
   - url: https://api.relay.pocketmoney.global
     description: Production — verify the deployed contract before use
 security:
@@ -891,7 +891,7 @@ paths:
         **Required scope:** `accounts:write`.
 
         Replaces supplied presentation fields. Ownership, currency and default
-        selection are read-only in 0.6.1.
+        selection are read-only.
 
         Supply at least one of `label`, `reference` or `metadata`. Omitted fields
         remain unchanged; `null` clears `label` or `reference`, and `{}` clears

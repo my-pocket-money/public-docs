@@ -547,3 +547,9 @@ body.dark-mode {
 	height: 1rem;
 	color: var(--sl-color-gray-3);
 }
+
+/* Scalar's intro "Client Libraries" card sets one language for every code
+   sample. Each sample has its own language menu, so the card goes. */
+.scalar-reference-intro-clients {
+	display: none;
+}
