@@ -64,7 +64,7 @@ curl 'https://api.relay.sandbox.pocketmoney.global/v1/accounts' \
 
 ## Supported scope and availability
 
-The release contains **38 public operations** across the eight resource
+The release contains **37 public operations** across the eight resource
 families above. New Accounts, Transfers and Batches use **USD**; a transfer to a
 Pakistani bank account is paid out in PKR.
 An Account's owner, currency and default designation cannot

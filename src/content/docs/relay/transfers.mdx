@@ -77,7 +77,7 @@ A Transfer is a transaction, so read its current state with `GET /v1/transaction
 - `failed`: it did not complete.
 - `voided`: Pocket accepted it, but it will not settle.
 
-`GET /v1/transfers` lists your transfers, newest first, with filters for method, Account, destination, status, amount and time.
+`GET /v1/transactions?kind=transfer` lists your transfers, newest first. It filters by Account, method, status, amount and time, and also requires `transactions:read`.
 
 ## API reference
 

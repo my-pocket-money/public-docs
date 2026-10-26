@@ -34,7 +34,6 @@ const expectedOperationIds = [
   "listPkBankAccountTransferOptions",
   "listRecipients",
   "listTransactions",
-  "listTransfers",
   "listUsBankAccountTransferOptions",
   "removeRecipient",
   "updateAccount",

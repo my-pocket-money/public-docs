@@ -8,14 +8,18 @@ sidebar:
 ## 0.7.0 — Sandbox release candidate
 
 Adds Counterparties and transfers to them: 16 new operations. Transfers are
-now read as transactions, so `GET /v1/transfers/{transfer_id}` is removed, for
-38 operations in all. Transfer lists now include transfers to Counterparties.
+now read as transactions, so `GET /v1/transfers/{transfer_id}` and
+`GET /v1/transfers` are removed, for 37 operations in all.
 
 ### Breaking changes
 
 - `GET /v1/transfers/{transfer_id}` is removed. A transfer is a transaction:
   read it with `GET /v1/transactions/{transaction_id}`, which needs
   `transactions:read`.
+- `GET /v1/transfers` is removed. List transfers with
+  `GET /v1/transactions?kind=transfer`, which needs `transactions:read`. Its
+  `account_id` filter replaces `source_account_id`; there is no destination
+  filter.
 - A created transfer's `Location` is
   `/v1/transactions/{transaction_id}?account_id={source_account_id}`, the
   transaction viewed from its source Account, instead of
@@ -42,10 +46,10 @@ send transfers to: a `pk_bank_account` in Pakistan, paid in PKR, or a
 
 | Operation | Method and path |
 | --- | --- |
-| Retrieve the Customer's PKR rate | `GET /v1/transfers/pk_bank_account/rate` |
-| List Pakistani bank account delivery options | `GET /v1/transfers/pk_bank_account/options` |
-| List Pakistani bank account purpose codes | `GET /v1/transfers/pk_bank_account/purpose_codes` |
-| Quote a transfer to a Pakistani bank account | `POST /v1/transfers/pk_bank_account/quotes` |
+| Retrieve PKR rate | `GET /v1/transfers/pk_bank_account/rate` |
+| List available delivery options to a PK bank account | `GET /v1/transfers/pk_bank_account/options` |
+| List available purpose codes that can be used when transferring funds to a PK bank account | `GET /v1/transfers/pk_bank_account/purpose_codes` |
+| Request a quote for transferring PKR to a PK bank account | `POST /v1/transfers/pk_bank_account/quotes` |
 | Send USD to a Pakistani bank account | `POST /v1/transfers/pk_bank_account` |
 | Retrieve the Customer's USD rate | `GET /v1/transfers/us_bank_account/rate` |
 | List US bank account delivery options | `GET /v1/transfers/us_bank_account/options` |
@@ -65,7 +69,8 @@ These Transfers have `method` `ibft` or `ach`, and `destination.counterparty_id`
 
 Regenerate clients from this contract. Accept `counterparty_id` as a Transfer
 destination, and the new error codes `fx_rate_expired`, `quote_expired`,
-`counterparty_not_approved` and `conflict`. Read transfers with
+`counterparty_not_approved` and `conflict`. List transfers with
+`GET /v1/transactions?kind=transfer` and read one with
 `GET /v1/transactions/{transaction_id}`, or follow the `Location` a create
 returns, and grant `transactions:read` to keys that do.
 

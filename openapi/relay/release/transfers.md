@@ -43,17 +43,12 @@ The resulting Transfer has `method` `ibft` (Pakistan) or `ach` (US) and a
 
 ## Reading transfers
 
-`GET /v1/transfers` accepts repeated `method` values, `source_account_id`,
-`destination_id`, `status`, amount and timestamp bounds, exact `reference`,
-`order`, `limit` and `cursor`. A destination filter can identify an owned Account,
-a counterparty Customer, or an external instrument visible on a transfer.
-Unowned Account filters return `404`; an unmatched Customer or instrument filter
-returns an empty page. Historical transfers without an instrument ID cannot
-match that instrument filter. Page size defaults to 25 (maximum 100), newest
-first. Retain filters and order when following the returned cursor.
-
-A transfer is a transaction: read its current state with
-`GET /v1/transactions/{transaction_id}` and `transactions:read`. The `Location`
+A transfer is a transaction, so transfers are read through the transaction
+endpoints with `transactions:read`. List them with
+`GET /v1/transactions?kind=transfer`, which accepts `account_id`, repeated
+`method` values, `status`, amount and timestamp bounds, exact `reference`,
+`order`, `limit` and `cursor`. Read one's current state with
+`GET /v1/transactions/{transaction_id}`. The `Location`
 a create returns names the source `account_id`, so it resolves to the outbound
 view even when both Accounts are the Customer's. For an internal movement, the
 same transaction ID identifies the destination's Deposit view.

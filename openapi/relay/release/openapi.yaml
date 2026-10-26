@@ -99,17 +99,12 @@ tags:
 
       ## Reading transfers
 
-      `GET /v1/transfers` accepts repeated `method` values, `source_account_id`,
-      `destination_id`, `status`, amount and timestamp bounds, exact `reference`,
-      `order`, `limit` and `cursor`. A destination filter can identify an owned Account,
-      a counterparty Customer, or an external instrument visible on a transfer.
-      Unowned Account filters return `404`; an unmatched Customer or instrument filter
-      returns an empty page. Historical transfers without an instrument ID cannot
-      match that instrument filter. Page size defaults to 25 (maximum 100), newest
-      first. Retain filters and order when following the returned cursor.
-
-      A transfer is a transaction: read its current state with
-      `GET /v1/transactions/{transaction_id}` and `transactions:read`. The `Location`
+      A transfer is a transaction, so transfers are read through the transaction
+      endpoints with `transactions:read`. List them with
+      `GET /v1/transactions?kind=transfer`, which accepts `account_id`, repeated
+      `method` values, `status`, amount and timestamp bounds, exact `reference`,
+      `order`, `limit` and `cursor`. Read one's current state with
+      `GET /v1/transactions/{transaction_id}`. The `Location`
       a create returns names the source `account_id`, so it resolves to the outbound
       view even when both Accounts are the Customer's. For an internal movement, the
       same transaction ID identifies the destination's Deposit view.
@@ -1473,70 +1468,6 @@ paths:
           $ref: '#/components/responses/CounterpartyConflict'
         default:
           $ref: '#/components/responses/DefaultError'
-  /v1/transfers:
-    get:
-      tags:
-        - Transfers
-      summary: List transfers
-      description: |
-        **Required scope:** `transfers:read`.
-
-        Outbound money movements from the authenticated Customer.
-
-        - The list includes every method that produces a transfer object.
-        - Card activity is feed-only. See Transactions.
-
-        Narrow results with `method`, `source_account_id`, `destination_id`, `status`, amount,
-        reference, created date, or settled date.
-
-        When supplied, `source_account_id` must identify an owned Account.
-
-        `destination_id` may identify another owned Account, a Pocket Customer or
-        an external instrument visible on a transfer. An Account filter identifying a nonexistent or unowned Account
-        returns `404`. An unmatched Customer or instrument filter returns an
-        empty page, without revealing whether the counterparty exists. Historical
-        activity without an instrument ID is not matched by that instrument filter.
-
-        Results are ordered by creation time and Transfer ID. Use `order` to return the oldest or
-        newest Transfers first.
-
-        Transfer reads expose supported historical outbound activity; they do not
-        enable ACH, wire, onchain or IBFT creation through Relay. Only internal
-        transfer creation is implemented in this release.
-      operationId: listTransfers
-      x-required-scopes:
-        - transfers:read
-      parameters:
-        - $ref: '#/components/parameters/TransferMethodFilter'
-        - $ref: '#/components/parameters/SourceAccountId'
-        - $ref: '#/components/parameters/DestinationId'
-        - name: status
-          in: query
-          schema:
-            $ref: '#/components/schemas/TransferStatus'
-        - $ref: '#/components/parameters/AmountMin'
-        - $ref: '#/components/parameters/AmountMax'
-        - $ref: '#/components/parameters/ReferenceFilter'
-        - $ref: '#/components/parameters/CreatedAfter'
-        - $ref: '#/components/parameters/CreatedBefore'
-        - $ref: '#/components/parameters/SettledAfter'
-        - $ref: '#/components/parameters/SettledBefore'
-        - $ref: '#/components/parameters/CreatedOrder'
-        - $ref: '#/components/parameters/Cursor'
-        - $ref: '#/components/parameters/Limit'
-      responses:
-        '200':
-          description: A page of transfers.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TransferList'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        default:
-          $ref: '#/components/responses/DefaultError'
   /v1/transfers/internal:
     post:
       tags:
@@ -1739,7 +1670,7 @@ paths:
     get:
       tags:
         - Transfers
-      summary: Retrieve the Customer's PKR rate
+      summary: Retrieve PKR rate
       description: |
         **Required scope:** `transfers:read`.
 
@@ -1770,7 +1701,7 @@ paths:
     get:
       tags:
         - Transfers
-      summary: List Pakistani bank account delivery options
+      summary: List available delivery options to a PK bank account
       description: |
         **Required scope:** `transfers:read`.
 
@@ -1807,7 +1738,7 @@ paths:
     get:
       tags:
         - Transfers
-      summary: List Pakistani bank account purpose codes
+      summary: List available purpose codes that can be used when transferring funds to a PK bank account
       description: |
         **Required scope:** `transfers:read`.
 
@@ -1846,7 +1777,7 @@ paths:
     post:
       tags:
         - Transfers
-      summary: Quote a transfer to a Pakistani bank account
+      summary: Request a quote for transferring PKR to a PK bank account
       description: |
         **Required scope:** `transfers:read`.
 
@@ -2729,21 +2660,6 @@ components:
       description: Maximum amount (inclusive), as a decimal string in major units, e.g. `100.00`.
       schema:
         $ref: '#/components/schemas/MoneyAmount'
-    DestinationId:
-      name: destination_id
-      in: query
-      description: |
-        Filter by an owned Account, a Pocket Customer, or an external instrument already
-        visible on a matching transfer.
-
-        - Malformed or wrong-prefix value: `400`. `param` is `destination_id`.
-        - An Account that does not exist or belongs to another Customer returns `404`.
-        - An owned Account with no matching visible transfers returns an empty page.
-        - A Customer or instrument with no matching visible transfers returns an empty
-          page, without disclosing whether that counterparty exists.
-      schema:
-        type: string
-        pattern: ^(?:acc_|cus_|epi_)[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
     BatchItemIdFilter:
       name: item_id
       in: query
@@ -2806,22 +2722,6 @@ components:
       example:
         - ach
         - wire
-    TransferMethodFilter:
-      name: method
-      in: query
-      description: |
-        Filter transfers by method. Repeat the parameter to match more than one (e.g.
-        `method=ach&method=wire`). A method that cannot produce a Transfer returns `400`
-        `invalid_request` with `param=method` rather than an empty result.
-      style: form
-      explode: true
-      schema:
-        type: array
-        items:
-          $ref: '#/components/schemas/TransferMethod'
-      example:
-        - ach
-        - wire
     DepositMethodFilter:
       name: method
       in: query
@@ -2850,13 +2750,6 @@ components:
         type: string
         maxLength: 255
         pattern: ^[^\x00]*$
-    SourceAccountId:
-      name: source_account_id
-      in: query
-      description: Filter by an Account owned by the authenticated Customer. An Account that does not exist or belongs to another Customer returns privacy-preserving `404`.
-      schema:
-        type: string
-        pattern: ^acc_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
     AccountIdFilter:
       name: account_id
       in: query
