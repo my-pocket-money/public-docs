@@ -32,7 +32,9 @@ jobs:
     outputs:
       ready: ${{ steps.check.outputs.ready }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - id: check
         run: |
@@ -44,15 +46,24 @@ jobs:
 
   deploy:
     needs: site
-    if: needs.site.outputs.ready == 'true'
+    # GCP accepts only main's runs anyway; this skips a dispatch from another
+    # branch instead of failing it at sign-in.
+    if: needs.site.outputs.ready == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
+    # Actions are pinned to commits: this job can deploy to the public site.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      # Pinned to commits: this job can deploy to the public site.
+      # Built before signing in to GCP: auth writes a credentials file into the
+      # checkout, which `docker build .` would otherwise send into the image.
+      - name: Build
+        run: docker build --tag "$IMAGE" .
+
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
@@ -60,10 +71,9 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
-      - name: Build and push
+      - name: Push
         run: |
           gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
-          docker build --tag "$IMAGE" .
           docker push "$IMAGE"
 
       - name: Deploy
