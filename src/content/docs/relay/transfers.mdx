@@ -36,9 +36,9 @@ Available counterparty types:
 | `pk_bank_account` | A bank or wallet account in Pakistan | PKR |
 | `us_bank_account` | A checking or savings account at a US bank | USD |
 
-Pocket reviews every counterparty, and only an `approved` one can receive transfers. Sending to any other returns `counterparty_not_approved`.
+Each counterparty goes through a series of automated checks. At times, these checks trigger a manual review. Only an `approved` counterparty can receive transfers; sending to any other returns `counterparty_not_approved`.
 
-- `in_review`: Pocket is reviewing it. It can't receive transfers yet.
+- `in_review`: it's in manual review. It can't receive transfers yet.
 - `approved`: it can receive transfers.
 - `declined`: Pocket won't send to it. `status_reason` says why when known.
 - `deleted`: you deleted it, or an update replaced it.

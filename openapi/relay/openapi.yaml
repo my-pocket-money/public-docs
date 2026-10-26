@@ -131,7 +131,8 @@ tags:
       `/v1/transfers/{type}/counterparties`, because the details differ by type.
       Listing, retrieving and deleting work for every type at `/v1/counterparties`.
 
-      Pocket reviews every Counterparty, and only an `approved` one can receive
+      Each Counterparty goes through a series of automated checks, which at times
+      trigger a manual review. Only an `approved` Counterparty can receive
       transfers. Account numbers are returned masked. A Counterparty's details can't
       be edited in place: an update replaces it with a new Counterparty and marks the
       old one `deleted`.
