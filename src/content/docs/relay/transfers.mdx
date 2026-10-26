@@ -43,7 +43,7 @@ Each counterparty goes through a series of automated checks. At times, these che
 - `declined`: Pocket won't send to it. `status_reason` says why when known.
 - `deleted`: you deleted it, or an update replaced it.
 
-Bank details differ by type, so you create and update a counterparty under its type, at `/v1/transfers/{type}/counterparties`. You list, retrieve and delete counterparties of any type at `/v1/counterparties`.
+Counterparty details differ by type, so you create and update a counterparty under its type, at `/v1/transfers/{type}/counterparties`. You list, retrieve and delete counterparties of any type at `/v1/counterparties`.
 
 A counterparty's details can't be edited in place. An update creates a new counterparty, sets its `replaces_counterparty_id` to the old one, and marks the old one `deleted`. Account numbers are returned masked to their last four characters.
 
