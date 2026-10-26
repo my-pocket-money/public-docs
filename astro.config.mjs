@@ -38,9 +38,11 @@ export default defineConfig({
 			favicon: '/favicon.svg',
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/my-pocket-money/public-docs' }],
 			editLink: { baseUrl: 'https://github.com/my-pocket-money/public-docs/edit/main/' },
-			customCss: ['./src/styles/public-docs.css'],
+			customCss: ['@fontsource-variable/outfit', '@fontsource-variable/jetbrains-mono', './src/styles/public-docs.css'],
 			components: {
 				Head: './src/components/Head.astro',
+				Header: './src/components/Header.astro',
+				Sidebar: './src/components/Sidebar.astro',
 			},
 			plugins: [
 				// Before sidebar-topics: with no sidebar defined yet, Scalar leaves
@@ -55,19 +57,15 @@ export default defineConfig({
 					{
 						label: 'Relay',
 						link: '/relay/',
-						icon: 'random',
 						items: [
 							'relay',
 							{ label: 'Guides', items: [{ autogenerate: { directory: 'relay/guides' } }] },
 							'relay/changelog',
-							{ label: 'API reference', link: '/relay/api/' },
 						],
 					},
 					{
 						label: 'Connect',
 						link: '/connect/',
-						icon: 'puzzle',
-						badge: { text: 'Soon', variant: 'note' },
 						items: ['connect'],
 					},
 				]),

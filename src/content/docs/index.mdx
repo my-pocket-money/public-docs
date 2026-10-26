@@ -2,24 +2,33 @@
 title: Pocket Money Docs
 description: Guides and API references for building on Pocket Money.
 template: splash
-hero:
-  tagline: Guides and API references for building on Pocket Money.
 ---
 
-import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+Guides and API references for building on Pocket Money.
 
-<CardGrid>
-	<Card title="Relay" icon="random">
-		Manage Accounts and recipients, move money between Pocket Customers, run
-		payroll Batches, and reconcile balances and activity.
-
-		<LinkCard title="Read the overview" href="/relay/" />
-		<LinkCard title="API reference" href="/relay/api/" />
-	</Card>
-	<Card title="Connect" icon="puzzle">
-		Let your customers link their Pocket Money account to your app and act on
-		it with their authorization. Documentation is coming soon.
-
-		<LinkCard title="Connect" href="/connect/" />
-	</Card>
-</CardGrid>
+<div class="pm-products not-content">
+	<section class="pm-product">
+		<h2>Relay</h2>
+		<p>
+			Manage Accounts and recipients, move money between Pocket Customers, run
+			payroll Batches, and reconcile balances and activity.
+		</p>
+		<ul>
+			<li><a href="/relay/">Overview</a></li>
+			<li><a href="/relay/guides/payroll-model/">Guides</a></li>
+			<li><a href="/relay/api/">API reference</a></li>
+			<li><a href="/relay/changelog/">Changelog</a></li>
+		</ul>
+	</section>
+	<section class="pm-product">
+		<h2>Connect</h2>
+		<p>
+			Let your customers link their Pocket Money account to your app and act on
+			it with their authorization.
+		</p>
+		<ul>
+			<li><a href="/connect/">Connect</a></li>
+			<li class="pm-soon">Documentation is coming soon</li>
+		</ul>
+	</section>
+</div>
