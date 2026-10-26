@@ -1,0 +1,30 @@
+{
+  "name": "public-docs",
+  "type": "module",
+  "version": "0.0.1",
+  "private": true,
+  "packageManager": "pnpm@12.14.0",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "pnpm spec:build && astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "spec:check": "redocly lint openapi/relay/openapi.yaml --config openapi/relay/redocly.yaml",
+    "spec:build": "./openapi/relay/scripts/build.sh",
+    "spec:release": "./openapi/relay/scripts/build.sh --write",
+    "baseline:reset": "node ./openapi/relay/scripts/openapi-baseline.mjs reset"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.42.6",
+    "@scalar/api-reference": "1.73.1",
+    "@scalar/starlight": "^0.2.16",
+    "astro": "^7.2.10",
+    "sharp": "^0.35.3",
+    "starlight-links-validator": "^0.27.0",
+    "starlight-sidebar-topics": "^0.9.0"
+  },
+  "devDependencies": {
+    "@redocly/cli": "2.40.0"
+  }
+}

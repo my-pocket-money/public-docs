@@ -1,0 +1,53 @@
+name: Deploy
+
+# Builds the site into an image and rolls it out to Cloud Run as a public
+# service at docs.pocketmoney.global. The GCP side, including the rule that only
+# main may deploy, belongs in infrastructure/environments/public-docs in
+# my-pocket-money/pocket, modeled on environments/docket without IAP.
+#
+# That stack doesn't exist yet: PROJECT and SERVICE are placeholders to check
+# against it. The job is skipped until its apply sets this repo's
+# GCP_WIF_PROVIDER variable.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+# The newest push holds every earlier change, so it replaces a deploy in flight.
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+env:
+  PROJECT: pm-public-docs
+  REGION: us-west1
+  SERVICE: public-docs
+  IMAGE: us-west1-docker.pkg.dev/pm-public-docs/public-docs/public-docs:${{ github.sha }}
+
+jobs:
+  deploy:
+    if: vars.GCP_WIF_PROVIDER != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: deployer@pm-public-docs.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and push
+        run: |
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+          docker build --tag "$IMAGE" .
+          docker push "$IMAGE"
+
+      - name: Deploy
+        run: gcloud run services update "$SERVICE" --image "$IMAGE" --region "$REGION" --project "$PROJECT"

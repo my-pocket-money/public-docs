@@ -1,0 +1,31 @@
+/* Pocket Money purple, from the Connect partner PDF's palette. */
+
+:root {
+	--sl-color-accent-low: #2e1245;
+	--sl-color-accent: #9b40e0;
+	--sl-color-accent-high: #e3ccf7;
+}
+
+:root[data-theme='light'] {
+	--sl-color-accent-low: #f2edf7;
+	--sl-color-accent: #9b40e0;
+	--sl-color-accent-high: #5a1e86;
+}
+
+/* Scalar API reference: take type and accent from Starlight so the reference
+   reads as part of the site. Scalar sets its theme on body.light-mode and
+   body.dark-mode (see Head.astro). */
+
+body.light-mode,
+body.dark-mode {
+	--scalar-font: var(--sl-font);
+	--scalar-font-code: var(--sl-font-mono);
+	--scalar-color-accent: var(--sl-color-accent);
+}
+
+body.dark-mode {
+	--scalar-background-1: var(--sl-color-black);
+	--scalar-background-2: var(--sl-color-gray-6);
+	--scalar-background-3: var(--sl-color-gray-5);
+	--scalar-border-color: var(--sl-color-hairline);
+}

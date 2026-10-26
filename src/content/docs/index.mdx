@@ -1,0 +1,25 @@
+---
+title: Pocket Money Docs
+description: Guides and API references for building on Pocket Money.
+template: splash
+hero:
+  tagline: Guides and API references for building on Pocket Money.
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+<CardGrid>
+	<Card title="Relay" icon="random">
+		Manage Accounts and recipients, move money between Pocket Customers, run
+		payroll Batches, and reconcile balances and activity.
+
+		<LinkCard title="Read the overview" href="/relay/" />
+		<LinkCard title="API reference" href="/relay/api/" />
+	</Card>
+	<Card title="Connect" icon="puzzle">
+		Let your customers link their Pocket Money account to your app and act on
+		it with their authorization. Documentation is coming soon.
+
+		<LinkCard title="Connect" href="/connect/" />
+	</Card>
+</CardGrid>

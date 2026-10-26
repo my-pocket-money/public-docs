@@ -1,0 +1,91 @@
+name: Check
+
+# Builds the site, which also lints the Relay contract and checks it against
+# the locked release, then checks each public API major for breaking changes
+# against its compatibility baseline. Deploy runs the same build on main.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cashapp/activate-hermit@v1
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint the source contract
+        run: pnpm spec:check
+
+      - name: Build the site
+        run: pnpm build
+
+  baseline-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: cashapp/activate-hermit@v1
+
+      - name: Load compatibility baselines
+        id: matrix
+        run: echo "matrix=$(node ./openapi/relay/scripts/openapi-baseline.mjs matrix)" >> "$GITHUB_OUTPUT"
+
+  backwards-compatibility:
+    needs:
+      - build
+      - baseline-matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.baseline-matrix.outputs.matrix) }}
+    name: Relay API V${{ matrix.api_major }} backwards compatibility
+    # Paths in compatibility/baselines.json are relative to openapi/relay.
+    env:
+      RELAY: openapi/relay
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve compatibility baseline
+        id: baseline
+        env:
+          BASELINE_KIND: ${{ matrix.baseline_kind }}
+          BASELINE_PATH: ${{ matrix.baseline_path }}
+          BASELINE_REF: ${{ matrix.baseline_ref }}
+        run: |
+          case "$BASELINE_KIND" in
+            development)
+              test -f "$RELAY/$BASELINE_PATH"
+              echo "source=$RELAY/$BASELINE_PATH" >> "$GITHUB_OUTPUT"
+              ;;
+            release)
+              git fetch --force --depth=1 origin "refs/tags/$BASELINE_REF:refs/tags/$BASELINE_REF"
+              echo "source=$BASELINE_REF:$RELAY/$BASELINE_PATH" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::unknown compatibility baseline kind: $BASELINE_KIND"
+              exit 1
+              ;;
+          esac
+
+      - name: Check for breaking changes
+        uses: oasdiff/oasdiff-action/breaking@033c15c845bef10f148afb0fa781bf1b2a7fe1bf # v0.1.12, oasdiff v1.28.0
+        with:
+          base: ${{ steps.baseline.outputs.source }}
+          revision: ${{ env.RELAY }}/${{ matrix.contract }}
+          fail-on: WARN
+          include-path-params: true
+          review: false
