@@ -54,71 +54,58 @@ tags:
       microdeposits and zero-net Account activity are excluded.
   - name: Transfers
     description: |
-      Money leaving one of the authenticated Customer's Accounts. V1 creates
-      internal transfers to another owned Account or another Pocket Customer, and
-      transfers to a Counterparty: a bank account outside Pocket.
-      Transfer reads also expose supported outbound activity already processed by
-      Pocket. Card spends appear only in the transaction feed.
+      A transfer sends money from one of your Accounts to:
 
-      Reads require `transfers:read`; creating a transfer requires
-      `transfers:write`. Creation is not restricted to business Customers by these
-      operations, but the source credential, Customer and Accounts must be eligible.
-      Customer-to-Customer transfers may have a 30-day sending limit. Transfers between
-      your own Accounts are not subject to this limit.
+      1. A counterparty, which is a bank account outside Pocket.
+      2. Another Pocket customer.
+      3. Another of your Accounts.
 
-      ## Sending to a Counterparty
+      The money always leaves your Account in USD. The
+      [Transfers guide](https://docs.pocketmoney.global/relay/transfers/) explains
+      each part in more detail.
 
-      Every transfer to a Counterparty is created from a quote. Each Counterparty type
-      has its routes under `/v1/transfers/{type}`, where `{type}` is `pk_bank_account`
-      or `us_bank_account`:
+      ## Types
 
-      1. **Show the price.** `GET /v1/transfers/{type}/rate` returns the Customer's
-         rate, and `GET /v1/transfers/{type}/options` returns the delivery options they
-         can use, each with its fee schedule. Both change rarely, so fetch them once and
-         compute the price as the Customer types. Computing it is optional.
-      2. **Quote it.** `POST /v1/transfers/{type}/quotes` with the chosen option, the
-         payin and the rate's `id` returns Pocket's exact fee and payout. A rate that's
-         no longer the Customer's returns `fx_rate_expired`; fetch it again and
-         recompute.
-      3. **Send it.** `POST /v1/transfers/{type}` with the quote's `id`, the
-         Counterparty and, for Pakistan, a purpose code from
-         `GET /v1/transfers/pk_bank_account/purpose_codes`. A quote can be used once,
-         within five minutes; an expired one returns `quote_expired`. The Counterparty
-         must be `approved`, or the request returns `counterparty_not_approved`.
+      Each type has its own create endpoint, `POST /v1/transfers/{type}`.
 
-      `payin_amount` is the USD leaving the Account, fee included. The fee is in USD and
-      comes out of it:
+      - **`internal`** sends USD to another Pocket customer, by `customer_id`, or to
+        another of your Accounts, by `account_id`. Its `method` is `internal`.
+      - **`pk_bank_account`** sends to a counterparty's bank or wallet account in
+        Pakistan, paid out in PKR. Its `method` is `ibft`.
+      - **`us_bank_account`** sends USD to a counterparty's checking or savings
+        account at a US bank. Its `method` is `ach`.
 
-      - `fee = base_amount + min(percentage% × payin, cap_amount)`, rounded half away from
-        zero to two decimal places.
-      - `payout = (payin - fee) × rate`, rounded half to even to two decimal places. A USD
-        payout's rate is `1`.
+      ## Sending to a counterparty
 
-      The resulting Transfer has `method` `ibft` (Pakistan) or `ach` (US) and a
-      `destination` of `{counterparty_id}`.
+      Every transfer to a counterparty is created from a quote:
 
-      ## Reading transfers
+      1. **Get the price inputs.** `GET /v1/transfers/{type}/rate` returns your rate,
+         and `GET /v1/transfers/{type}/options` returns your delivery options with
+         their fee schedules. Both change rarely, so fetch them once.
+      2. **Quote it.** `POST /v1/transfers/{type}/quotes` returns the exact fee and
+         payout, fixed for five minutes.
+      3. **Send it.** `POST /v1/transfers/{type}` with the quote's `id` and the
+         `counterparty_id`. A transfer to Pakistan also needs a `purpose_code`.
 
-      A transfer is a transaction, so transfers are read through the transaction
-      endpoints with `transactions:read`. List them with
-      `GET /v1/transactions?kind=transfer`, which accepts `account_id`, repeated
-      `method` values, `status`, amount and timestamp bounds, exact `reference`,
-      `order`, `limit` and `cursor`. Read one's current state with
-      `GET /v1/transactions/{transaction_id}`. The `Location`
-      a create returns names the source `account_id`, so it resolves to the outbound
-      view even when both Accounts are the Customer's. For an internal movement, the
-      same transaction ID identifies the destination's Deposit view.
-      For an owned-Account transfer, both views are accessible to the same Customer.
-      Otherwise, the destination Customer's private activity remains hidden.
+      Rates, options, purpose codes and quotes require `transfers:read`.
 
-      Creation requires `Idempotency-Key` and returns `201` with a relative `Location`.
-      For 24 hours, an unchanged retry replays the saved initial response; it does not
-      refresh status or send money again. A changed request using an unexpired idempotency key returns
-      `409`. Reads return current state. A created, pending transfer is accepted, not
-      settled. Preserve its ID and poll the read endpoint to reconcile the outcome.
+      `payin_amount` is the USD that leaves your Account, fee included:
 
-      The Transfer response does not expose method-specific details or FX
-      data. The quote carries the fee, payout and rate.
+      - `fee = base_amount + min(percentage% × payin_amount, cap_amount)`, rounded
+        half away from zero to two decimal places.
+      - `payout = (payin_amount − fee) × rate`, rounded half to even to two decimal
+        places. A USD payout's rate is `1`.
+
+      ## Following a transfer
+
+      Creating a transfer requires `transfers:write` and an `Idempotency-Key` header.
+      It returns `201 Created` with a `Location`. `201` means Pocket accepted the
+      transfer, not that it settled.
+
+      A transfer is a transaction. Read one with
+      `GET /v1/transactions/{transaction_id}`, and list them with
+      `GET /v1/transactions?kind=transfer`. Both require `transactions:read`. A
+      transfer's `status` is `pending`, `settled`, `failed` or `voided`.
   - name: Counterparties
     description: |
       Bank accounts outside Pocket that the authenticated Customer can send transfers
@@ -1477,86 +1464,36 @@ paths:
       description: |
         **Required scope:** `transfers:write`.
 
-        Move funds from the authenticated Customer's default Account (`source.customer_id`) or an
-        exact owned Account (`source.account_id`) either to another Customer
-        (`destination.customer_id`) or another Account owned by the same Customer
-        (`destination.account_id`). A Customer destination receives into its immutable default
-        Account. The counterparty Customer's private balance and activity remain hidden.
+        Sends USD from one of your Accounts to another Pocket customer or to another of
+        your Accounts.
 
-        Supply exactly one source and one destination selector. A Customer source
-        must identify the authenticated Customer. A Customer destination must be
-        another Customer, not a Recipient relationship ID. An Account destination
-        must be owned by the authenticated Customer and differ from the resolved
-        source Account. Selecting another Customer's Account directly is not supported.
+        - **Source:** `source.account_id` for a specific Account, or `source.customer_id`
+          set to your own Customer ID for your default Account.
+        - **Destination:** `destination.customer_id` for another Pocket customer, who
+          receives it in their default Account, or `destination.account_id` for another
+          of your Accounts.
 
-        Individuals and businesses can use this operation. Customer-to-Customer
-        transfers may have 30-day sending limits. Transfers between your own Accounts
-        are not subject to these limits.
+        Supply exactly one source and one destination. A destination Account must be
+        yours and differ from the source.
 
-        **Idempotency:** The `Idempotency-Key` HTTP header is required for both
-        Account-to-Account and Customer-to-Customer P2P transfers. Keys are scoped
-        to the authenticated Customer and executing transfer operation, not to the
-        API-key credential. Account transfers and P2P share one operation scope.
-        Matching input includes the requested source and
-        destination, normalized amount, currency, reference and memo. Decimal-equivalent
-        amounts such as `"1"`, `"1.0"` and `"1.00"` match. Reusing an unexpired idempotency key for
-        different input within that operation returns `409`. A default-Customer
-        source selector and an explicit Account selector remain different input,
-        even if they currently resolve to the same Account.
+        Transfers to another customer count toward a 30-day sending limit. Going over
+        it returns `429` with `details.code: rate_limited`. Transfers between your own
+        Accounts don't count.
 
-        For the default 24-hour window, an unchanged retry returns the saved initial
-        `201 Created` Transfer response and original `Location`. Replay preserves
-        the saved Account routing, status, reference, memo and timestamps even if
-        the Transfer later settles, fails or is voided. It does not move money again
-        or reload the Transfer's current state. Follow `Location` for current
-        state. Authentication and authorization apply to every attempt.
+        `201 Created` means Pocket accepted the transfer, not that it settled. While
+        it's `pending`, the amount is reserved on the source Account. When it settles,
+        the destination is credited. If it fails or is voided, the reservation is
+        released and nothing is credited.
 
-        Concurrent requests with the same key and input wait for the first attempt
-        to commit successfully, then replay its response. Being in flight alone
-        does not produce an idempotency conflict. Retries do not extend the window;
-        at or after 24-hour expiry, reusing the key can create another transfer.
-        Keep one key and unchanged body for one payment intent. Use a new key for
-        a different intent, including changing between Account-transfer and P2P
-        destinations.
+        The `Idempotency-Key` header is required. For 24 hours, a retry with the same
+        key and body returns the original response without sending money again. The
+        same key with a different body returns `409` with
+        `details.code: idempotency_conflict`.
 
-        **At acceptance**
-
-        `201 Created` confirms acceptance, not settlement.
-
-        - Source: `kind` is `transfer`, `method` is `internal`, and `status` is `pending`.
-        - Destination: `kind` is `deposit`, `method` is `internal`, and `status` is `pending`.
-        - Each Customer can immediately read its own Account views; an owned-Account
-          transfer gives the same Customer both views.
-        - Source `available` decreases and `reserved` increases.
-
-        **At settlement**
-
-        Both views become `settled`. The source reservation posts out. Pocket credits the destination
-        `settled` and `available` amounts.
-
-        **On failure or voiding**
-
-        Both views remain visible with the terminal status. Pocket releases the source reservation
-        and never credits the destination.
-
-        If the API rejects a request before it creates a `txn_…`, it produces no transfer, deposit,
-        or transaction resource.
-
-        A credential without permission to send returns `403 forbidden`. A
-        destination Customer without a payable default Account returns
-        `403 recipient_not_payable`, without revealing private setup details.
-        A missing or unowned source Account returns `404`, as does a missing or
-        unowned destination Account on an owned-Account transfer.
-
-        A P2P request that exceeds the source Customer's 30-day sending limit returns
-        `429`, with outer `code: resource_exhausted` and `details.code: rate_limited`.
-        It creates no transfer, deposit or transaction. This is a rejected request,
-        not the `limit_exceeded` failure code on a Batch item.
-
-        If a response is lost, retry the original key and request while the key is
-        live. Once expired, reconcile known transaction IDs and references before
-        deciding whether to send again. A reference is not unique and does not
-        prevent another transfer.
+        - `402 insufficient_funds`: the source Account doesn't have the amount
+          available.
+        - `403 recipient_not_payable`: the destination customer can't receive transfers.
+        - `404`: the source or destination Account doesn't exist or isn't yours.
       operationId: createInternalTransfer
       x-required-scopes:
         - transfers:write
@@ -1675,13 +1612,11 @@ paths:
       description: |
         **Required scope:** `transfers:read`.
 
-        The rate the Customer gets from USD to PKR: the State Bank of Pakistan
-        rate with the Customer's pricing applied. It changes when State Bank of
-        Pakistan publishes a new rate, about once a Pakistani bank day, or when
-        the Customer's pricing changes.
+        Returns your rate from USD to PKR: the State Bank of Pakistan rate with your
+        pricing applied. It changes when the State Bank publishes a new rate, about once
+        a Pakistani bank day, or when your pricing changes.
 
-        Use it to show a price before an amount is entered, and send its `id` as
-        `fx_rate_id` when quoting.
+        Send its `id` as `fx_rate_id` when quoting.
       operationId: getPkBankAccountFxRate
       x-required-scopes:
         - transfers:read
@@ -1706,21 +1641,19 @@ paths:
       description: |
         **Required scope:** `transfers:read`.
 
-        List the delivery options the Customer can send to a Pakistani bank
-        account with, in the order to show them. Each has the fee schedule this
-        Customer pays and the currency it pays out in. An option Pocket has
-        turned off for the Customer is left out, so the list can be empty.
+        Returns the delivery options you can send to a Pakistani bank account with, in
+        the order to show them, each with the fee schedule you pay. An option turned
+        off for you is left out, so the list can be empty.
 
-        Options price no amount. To show a price as the Customer types, fetch the
-        rate from `GET /v1/transfers/pk_bank_account/rate` and compute:
+        To show a price before quoting, compute it from an option's fee schedule and
+        your rate:
 
-        - `fee = base_amount + min(percentage% × payin, cap_amount)`, rounded half
-          away from zero to two decimal places.
-        - `payout = (payin - fee) × rate`, rounded half to even to two decimal
+        - `fee = base_amount + min(percentage% × payin_amount, cap_amount)`, rounded
+          half away from zero to two decimal places.
+        - `payout = (payin_amount − fee) × rate`, rounded half to even to two decimal
           places.
 
-        `POST /v1/transfers/pk_bank_account/quotes` returns Pocket's exact price,
-        so computing it yourself is optional.
+        Computing it is optional: a quote returns the exact price.
       operationId: listPkBankAccountTransferOptions
       x-required-scopes:
         - transfers:read
@@ -1743,13 +1676,13 @@ paths:
       description: |
         **Required scope:** `transfers:read`.
 
-        List the State Bank of Pakistan purpose codes a transfer to a Pakistani
-        bank account can be reported under, ordered by `display_name`. Show
-        `display_name` and `description` to the Customer, and send the chosen
-        `code` as `purpose_code` to `POST /v1/transfers/pk_bank_account`.
+        Returns the State Bank of Pakistan purpose codes a transfer to a Pakistani bank
+        account can be reported under, ordered by `display_name`. Show `display_name`
+        and `description`, and send the chosen `code` as `purpose_code` when you create
+        the transfer.
 
-        The list is complete in one response but uses the standard list shape:
-        `has_more` is always `false`, and `next_cursor` is always `null`.
+        The list is never paginated: `has_more` is always `false`, and `next_cursor` is
+        always `null`.
       operationId: listPkBankAccountPurposeCodes
       x-required-scopes:
         - transfers:read
@@ -1782,23 +1715,20 @@ paths:
       description: |
         **Required scope:** `transfers:read`.
 
-        Price sending `payin_amount` USD to a Pakistani bank account with a
-        delivery option, at `fx_rate_id`. Every transfer to a Counterparty is
-        created from a quote, which fixes its fee, rate and payout. Send one
-        transfer with it to `POST /v1/transfers/pk_bank_account` before
-        `expires_at`, five minutes after it's created. Nothing is held, and a
-        quote names no Counterparty or Account.
+        Prices sending `payin_amount` to a Pakistani bank account with a delivery
+        option, at your rate. The quote fixes the fee, rate and payout. Send one
+        transfer with it before `expires_at`, five minutes after it's created. A quote
+        names no counterparty or Account, and nothing is held.
 
-        - `delivery_option_id` is an `id` from
-          `GET /v1/transfers/pk_bank_account/options`. Another type's option, an
-          option that isn't offered to the Customer, or a payin that doesn't cover
-          the fee returns `400 invalid_request`.
-        - `fx_rate_id` is the rate you computed with: the `id` from
-          `GET /v1/transfers/pk_bank_account/rate`. If it isn't the
-          Customer's current rate, the request returns `400` with
-          `details.code: fx_rate_expired`. Fetch the rate again and recompute.
+        - `delivery_option_id`: an `id` from `GET /v1/transfers/pk_bank_account/options`.
+        - `fx_rate_id`: the `id` from `GET /v1/transfers/pk_bank_account/rate`.
 
-        Retrying a failed request creates a new quote, so this operation takes no
+        If `fx_rate_id` is no longer your rate, the request returns `400` with
+        `details.code: fx_rate_expired`. Fetch the rate again and recompute. An option
+        that isn't offered to you, another type's option, or a payin that doesn't cover
+        the fee returns `400 invalid_request`.
+
+        Retrying a failed request creates a new quote, so this endpoint takes no
         `Idempotency-Key`.
       operationId: createPkBankAccountTransferQuote
       x-required-scopes:
@@ -1836,27 +1766,28 @@ paths:
       description: |
         **Required scope:** `transfers:write`.
 
-        Send a `pk_bank_account` quote's payin from an owned Account to an
-        `approved` `pk_bank_account` Counterparty, paid out in PKR at the quote's
-        price. Get the quote from `POST /v1/transfers/pk_bank_account/quotes`.
+        Sends a `pk_bank_account` quote's payin from your Account to an `approved`
+        `pk_bank_account` counterparty, paid out in PKR at the quote's price.
 
-        - A quote that has expired returns `400` with `details.code: quote_expired`.
-          Quote again.
-        - A quote another transfer used returns `409 conflict`.
-        - A quote for the other type returns `400 invalid_request`, and an unknown
-          one returns `404`.
+        - `quote_id`: a `pk_bank_account` quote that hasn't expired or been used.
+        - `counterparty_id`: an `approved` `pk_bank_account` counterparty.
+        - `purpose_code`: a `code` from `GET /v1/transfers/pk_bank_account/purpose_codes`.
+        - `source_account_id`: the Account the money leaves. Left out, it's your default
+          Account.
 
-        `source_account_id` names the Account the money leaves; left out, it's the
-        Customer's default Account.
+        The `Idempotency-Key` header is required. For 24 hours, a retry with the same
+        key and body returns the original `201` response without sending money again.
+        The same key with a different body returns `409` with
+        `details.code: idempotency_conflict`.
 
-        **Idempotency:** the `Idempotency-Key` header is required. For 24 hours, an
-        unchanged retry returns the saved initial `201` Transfer response and
-        `Location`, without sending money again. A changed request under the same key
-        returns `409` with `details.code: idempotency_conflict`.
+        - `400 quote_expired`: the quote has expired. Quote again.
+        - `400 counterparty_not_approved`: the counterparty isn't `approved`.
+        - `400 invalid_request`: a quote or counterparty of the other type.
+        - `404`: an unknown quote, counterparty or Account.
+        - `409 conflict`: another transfer already used the quote.
 
-        `201 Created` confirms acceptance, not settlement. The Transfer's `method` is
-        `ibft` and its `destination` is the Counterparty. Poll its `Location`
-        for its status.
+        `201 Created` means Pocket accepted the transfer, not that it settled. Its
+        `method` is `ibft`. Follow its `Location` to read its status.
       operationId: createPkBankAccountTransfer
       x-required-scopes:
         - transfers:write
@@ -1916,10 +1847,9 @@ paths:
       description: |
         **Required scope:** `transfers:read`.
 
-        A US bank account is paid out in USD, so the rate is always `1`, under
-        the fixed `id` `afxr_01m5tfkcgqe7fssbgapzx38qpy`. Send it as `fx_rate_id`
-        when quoting, as for Pakistani bank account transfers, so every transfer
-        type is quoted the same way.
+        A US bank account is paid in USD, so the rate is always `1`, under the fixed
+        `id` `afxr_01m5tfkcgqe7fssbgapzx38qpy`. Send it as `fx_rate_id` when quoting, so
+        every transfer type is quoted the same way.
       operationId: getUsBankAccountFxRate
       x-required-scopes:
         - transfers:read
@@ -1942,9 +1872,9 @@ paths:
       description: |
         **Required scope:** `transfers:read`.
 
-        List the delivery options the Customer can send to a US bank account
-        with, as for Pakistani bank account options. Compute a price with the
-        rate from `GET /v1/transfers/us_bank_account/rate`.
+        Returns the delivery options you can send to a US bank account with, each with
+        the fee schedule you pay. It works like
+        `GET /v1/transfers/pk_bank_account/options`, with a rate of `1`.
       operationId: listUsBankAccountTransferOptions
       x-required-scopes:
         - transfers:read
@@ -1967,11 +1897,11 @@ paths:
       description: |
         **Required scope:** `transfers:read`.
 
-        Price sending `payin_amount` USD to a US bank account, as for Pakistani
-        bank account quotes, with an option from
+        Prices sending `payin_amount` to a US bank account. It works like
+        `POST /v1/transfers/pk_bank_account/quotes`, with an option from
         `GET /v1/transfers/us_bank_account/options` and the rate from
         `GET /v1/transfers/us_bank_account/rate`. Send one transfer with it to
-        `POST /v1/transfers/us_bank_account`.
+        `POST /v1/transfers/us_bank_account` within five minutes.
       operationId: createUsBankAccountTransferQuote
       x-required-scopes:
         - transfers:read
@@ -2006,16 +1936,19 @@ paths:
       description: |
         **Required scope:** `transfers:write`.
 
-        Send a `us_bank_account` quote's payin from an owned Account to an
-        `approved` `us_bank_account` Counterparty, at the quote's price. Quote
-        errors are as for Pakistani bank account transfers.
+        Sends a `us_bank_account` quote's payin from your Account to an `approved`
+        `us_bank_account` counterparty, at the quote's price.
 
-        `source_account_id` names the Account the money leaves; left out, it's the
-        Customer's default Account. The `Idempotency-Key` header is required and
-        behaves as for Pakistani bank account transfers.
+        - `quote_id`: a `us_bank_account` quote that hasn't expired or been used.
+        - `counterparty_id`: an `approved` `us_bank_account` counterparty.
+        - `source_account_id`: the Account the money leaves. Left out, it's your default
+          Account.
 
-        `201 Created` confirms acceptance, not settlement. The Transfer's `method` is
-        `ach` and its `destination` is the Counterparty.
+        Errors and the `Idempotency-Key` header work as for
+        `POST /v1/transfers/pk_bank_account`.
+
+        `201 Created` means Pocket accepted the transfer, not that it settled. Its
+        `method` is `ach`. Follow its `Location` to read its status.
       operationId: createUsBankAccountTransfer
       x-required-scopes:
         - transfers:write
