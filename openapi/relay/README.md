@@ -4,7 +4,7 @@ The OpenAPI contract for the Relay API, rendered at
 https://docs.pocketmoney.global/relay/api/ and downloadable from
 https://docs.pocketmoney.global/relay/openapi.yaml.
 
-Specification **0.6.1** is the current Sandbox release candidate; API paths
+Specification **0.7.0** is the current Sandbox release candidate; API paths
 remain `/v1`.
 
 | Environment | API |

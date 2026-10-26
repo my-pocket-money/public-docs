@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Pocket Money - Relay API
-  version: 0.6.1
+  version: 0.7.0
   description: |
     The Relay API lets Pocket Customers manage Accounts and recipients, move
     money, submit Batches of transfers, and reconcile Account-relative balances
@@ -55,16 +55,49 @@ tags:
   - name: Transfers
     description: |
       Money leaving one of the authenticated Customer's Accounts. V1 creates
-      internal transfers to another owned Account or another Pocket Customer.
+      internal transfers to another owned Account or another Pocket Customer, and
+      transfers to a Counterparty: a bank account outside Pocket.
       Transfer reads also expose supported outbound activity already processed by
-      Pocket; this does not enable ACH, wire, onchain or IBFT creation through Relay.
-      Card spends appear only in the transaction feed.
+      Pocket. Card spends appear only in the transaction feed.
 
-      Reads require `transfers:read`; internal transfer creation requires
-      `transfers:write`. Creation is not restricted to business Customers by this
-      operation, but the source credential, Customer and Accounts must be eligible.
+      Reads require `transfers:read`; creating a transfer requires
+      `transfers:write`. Creation is not restricted to business Customers by these
+      operations, but the source credential, Customer and Accounts must be eligible.
       Customer-to-Customer transfers may have a 30-day sending limit. Transfers between
       your own Accounts are not subject to this limit.
+
+      ## Sending to a Counterparty
+
+      Every transfer to a Counterparty is created from a quote. Each Counterparty type
+      has its routes under `/v1/transfers/{type}`, where `{type}` is `pk_bank_account`
+      or `us_bank_account`:
+
+      1. **Show the price.** `GET /v1/transfers/{type}/rate` returns the Customer's
+         rate, and `GET /v1/transfers/{type}/options` returns the delivery options they
+         can use, each with its fee schedule. Both change rarely, so fetch them once and
+         compute the price as the Customer types. Computing it is optional.
+      2. **Quote it.** `POST /v1/transfers/{type}/quotes` with the chosen option, the
+         payin and the rate's `id` returns Pocket's exact fee and payout. A rate that's
+         no longer the Customer's returns `fx_rate_expired`; fetch it again and
+         recompute.
+      3. **Send it.** `POST /v1/transfers/{type}` with the quote's `id`, the
+         Counterparty and, for Pakistan, a purpose code from
+         `GET /v1/transfers/pk_bank_account/purpose_codes`. A quote can be used once,
+         within five minutes; an expired one returns `quote_expired`. The Counterparty
+         must be `approved`, or the request returns `counterparty_not_approved`.
+
+      `payin_amount` is the USD leaving the Account, fee included. The fee is in USD and
+      comes out of it:
+
+      - `fee = base_amount + min(percentage% × payin, cap_amount)`, rounded half away from
+        zero to two decimal places.
+      - `payout = (payin - fee) × rate`, rounded half to even to two decimal places. A USD
+        payout's rate is `1`.
+
+      The resulting Transfer has `method` `ibft` (Pakistan) or `ach` (US) and a
+      `destination` of `{counterparty_id}`.
+
+      ## Reading transfers
 
       `GET /v1/transfers` accepts repeated `method` values, `source_account_id`,
       `destination_id`, `status`, amount and timestamp bounds, exact `reference`,
@@ -75,9 +108,11 @@ tags:
       match that instrument filter. Page size defaults to 25 (maximum 100), newest
       first. Retain filters and order when following the returned cursor.
 
-      `GET /v1/transfers/{transfer_id}` returns the current outbound view, including
-      its exact source Account, status and transition timestamps. For an internal
-      movement, the same transaction ID identifies the destination's Deposit view.
+      A transfer is a transaction: read its current state with
+      `GET /v1/transactions/{transaction_id}` and `transactions:read`. The `Location`
+      a create returns names the source `account_id`, so it resolves to the outbound
+      view even when both Accounts are the Customer's. For an internal movement, the
+      same transaction ID identifies the destination's Deposit view.
       For an owned-Account transfer, both views are accessible to the same Customer.
       Otherwise, the destination Customer's private activity remains hidden.
 
@@ -88,7 +123,25 @@ tags:
       settled. Preserve its ID and poll the read endpoint to reconcile the outcome.
 
       The Transfer response does not expose method-specific details or FX
-      data.
+      data. The quote carries the fee, payout and rate.
+  - name: Counterparties
+    description: |
+      Bank accounts outside Pocket that the authenticated Customer can send transfers
+      to: a `pk_bank_account` in Pakistan, paid in PKR, or a `us_bank_account`,
+      paid in USD. A Counterparty belongs to one Customer and is not a Pocket
+      Customer or a Recipient.
+
+      Each type's Counterparties are created and updated beside its transfers, at
+      `/v1/transfers/{type}/counterparties`, because the details differ by type.
+      Listing, retrieving and deleting work for every type at `/v1/counterparties`.
+
+      Pocket reviews every Counterparty, and only an `approved` one can receive
+      transfers. Account numbers are returned masked. A Counterparty's details can't
+      be edited in place: an update replaces it with a new Counterparty and marks the
+      old one `deleted`.
+
+      Reads require `counterparties:read`; creating, updating and deleting require
+      `counterparties:write`.
   - name: Deposits
     description: |
       Money arriving in an Account owned by the authenticated Customer. Both Deposit
@@ -1137,6 +1190,289 @@ paths:
           $ref: '#/components/responses/NotFound'
         default:
           $ref: '#/components/responses/DefaultError'
+  /v1/counterparties:
+    get:
+      tags:
+        - Counterparties
+      summary: List counterparties
+      description: |
+        **Required scope:** `counterparties:read`.
+
+        Every Counterparty of the authenticated Customer that is not `deleted`, newest
+        first. The list is not paginated; a Customer has few Counterparties.
+      operationId: listCounterparties
+      x-required-scopes:
+        - counterparties:read
+      responses:
+        '200':
+          description: The Customer's Counterparties.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CounterpartyList'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /v1/transfers/pk_bank_account/counterparties:
+    post:
+      tags:
+        - Counterparties
+      summary: Create a Pakistani bank account counterparty
+      description: |
+        **Required scope:** `counterparties:write`.
+
+        Save a bank or wallet account in Pakistan, identified by its IBAN, to send
+        PKR transfers to. Pocket derives the bank from the IBAN and validates the
+        IBAN's check digits.
+
+        A Customer can have one Counterparty per account. Saving an account that
+        already has a non-deleted Counterparty returns `409` with outer code
+        `already_exists`, `details.code: conflict` and the existing Counterparty in
+        `details.existing_id`. A retry of a create that succeeded returns the same
+        `409`, so use `existing_id` to recover the Counterparty.
+      operationId: createPkBankAccountCounterparty
+      x-required-scopes:
+        - counterparties:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePkBankAccountCounterpartyRequest'
+            example:
+              account_holder_name: Ayesha Khan
+              account_holder_type: individual
+              govid:
+                type: cnic
+                value: '3520212345678'
+              iban: PK36HABB0000001123456702
+      responses:
+        '201':
+          description: The created Counterparty.
+          headers:
+            Location:
+              description: Relative API path of the created Counterparty.
+              schema:
+                type: string
+                format: uri-reference
+                pattern: ^/v1/counterparties/tcp_
+                example: /v1/counterparties/tcp_01k0d2f6h8j4m7n9p3q5r1s0vw
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Counterparty'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/CounterpartyConflict'
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /v1/transfers/us_bank_account/counterparties:
+    post:
+      tags:
+        - Counterparties
+      summary: Create a US bank account counterparty
+      description: |
+        **Required scope:** `counterparties:write`.
+
+        Save a checking or savings account at a US bank to send USD transfers to.
+        The account holder's address is required; `address_line2` is optional.
+
+        A Customer can have one Counterparty per routing and account number. Saving
+        an account that already has a non-deleted Counterparty returns `409` with
+        outer code `already_exists`, `details.code: conflict` and the existing
+        Counterparty in `details.existing_id`.
+      operationId: createUsBankAccountCounterparty
+      x-required-scopes:
+        - counterparties:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUsBankAccountCounterpartyRequest'
+            example:
+              account_holder_name: Acme Supplies LLC
+              account_holder_type: business
+              routing_number: '021000021'
+              account_number: '123456789'
+              account_type: checking
+              address_line1: 1 Main St
+              address_city: Wilmington
+              address_state: DE
+              address_postal_code: '19801'
+              address_country: US
+      responses:
+        '201':
+          description: The created Counterparty.
+          headers:
+            Location:
+              description: Relative API path of the created Counterparty.
+              schema:
+                type: string
+                format: uri-reference
+                pattern: ^/v1/counterparties/tcp_
+                example: /v1/counterparties/tcp_01k0d2f6h8j4m7n9p3q5r1s0vw
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Counterparty'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/CounterpartyConflict'
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /v1/transfers/pk_bank_account/counterparties/{counterparty_id}:
+    patch:
+      tags:
+        - Counterparties
+      summary: Update a Pakistani bank account counterparty
+      description: |
+        **Required scope:** `counterparties:write`.
+
+        Change a `pk_bank_account` Counterparty's details. A field left out keeps its
+        current value. A government ID left out carries over.
+
+        A Counterparty's details can't be edited in place, so an update replaces it:
+        the Counterparty is marked `deleted` and a new one is returned, with a new
+        `id` and `replaces_counterparty_id` set to the old one. Transfers already sent
+        keep pointing at the old Counterparty. A Counterparty can be updated once,
+        including after it was deleted; updating it again returns `409`. Updating a
+        `declined` or `in_review` Counterparty returns `409`.
+
+        Moving to an account another of the Customer's Counterparties is on returns
+        `409` with `details.existing_id`. Updating a `us_bank_account` Counterparty
+        here returns `400`.
+      operationId: updatePkBankAccountCounterparty
+      x-required-scopes:
+        - counterparties:write
+      parameters:
+        - $ref: '#/components/parameters/CounterpartyIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePkBankAccountCounterpartyRequest'
+            example:
+              account_holder_name: Ayesha Khanum
+      responses:
+        '200':
+          description: The new Counterparty that replaces the updated one.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Counterparty'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/CounterpartyConflict'
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /v1/transfers/us_bank_account/counterparties/{counterparty_id}:
+    patch:
+      tags:
+        - Counterparties
+      summary: Update a US bank account counterparty
+      description: |
+        **Required scope:** `counterparties:write`.
+
+        Change a `us_bank_account` Counterparty's details. A field left out keeps its
+        current value. Each address field is changed on its own, and an empty
+        `address_line2` removes it.
+
+        An update replaces the Counterparty, as for Pakistani bank accounts: the
+        response is a new Counterparty with `replaces_counterparty_id` set, and the
+        old one is marked `deleted`. A Counterparty can be updated once, and a
+        `declined` or `in_review` Counterparty can't be updated.
+      operationId: updateUsBankAccountCounterparty
+      x-required-scopes:
+        - counterparties:write
+      parameters:
+        - $ref: '#/components/parameters/CounterpartyIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUsBankAccountCounterpartyRequest'
+            example:
+              address_line1: 500 Market St
+              address_postal_code: '19106'
+      responses:
+        '200':
+          description: The new Counterparty that replaces the updated one.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Counterparty'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/CounterpartyConflict'
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /v1/counterparties/{counterparty_id}:
+    get:
+      tags:
+        - Counterparties
+      summary: Retrieve a counterparty
+      description: |
+        **Required scope:** `counterparties:read`.
+
+        Fetch one of the authenticated Customer's Counterparties, in any status,
+        including `deleted`, so a past transfer can still show where it went.
+      operationId: getCounterparty
+      x-required-scopes:
+        - counterparties:read
+      parameters:
+        - $ref: '#/components/parameters/CounterpartyIdPath'
+      responses:
+        '200':
+          description: The Counterparty.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Counterparty'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/DefaultError'
+    delete:
+      tags:
+        - Counterparties
+      summary: Delete a counterparty
+      description: |
+        **Required scope:** `counterparties:write`.
+
+        Mark a Counterparty `deleted`. It can no longer receive transfers, and
+        transfers already sent to it continue. Deleting a deleted Counterparty
+        returns it unchanged. A `declined` or `in_review` Counterparty can't be
+        deleted and returns `409`.
+      operationId: deleteCounterparty
+      x-required-scopes:
+        - counterparties:write
+      parameters:
+        - $ref: '#/components/parameters/CounterpartyIdPath'
+      responses:
+        '200':
+          description: The deleted Counterparty.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Counterparty'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/CounterpartyConflict'
+        default:
+          $ref: '#/components/responses/DefaultError'
   /v1/transfers:
     get:
       tags:
@@ -1240,8 +1576,8 @@ paths:
         `201 Created` Transfer response and original `Location`. Replay preserves
         the saved Account routing, status, reference, memo and timestamps even if
         the Transfer later settles, fails or is voided. It does not move money again
-        or reload the Transfer's current state. Use `GET /v1/transfers/{transfer_id}`
-        for current state. Authentication and authorization apply to every attempt.
+        or reload the Transfer's current state. Follow `Location` for current
+        state. Authentication and authorization apply to every attempt.
 
         Concurrent requests with the same key and input wait for the first attempt
         to commit successfully, then replay its response. Being in flight alone
@@ -1340,12 +1676,12 @@ paths:
           description: The created Transfer, or the saved initial Transfer response on an unchanged retry within 24 hours. Replay preserves the original 201 status, Location and Transfer body, even after settlement, failure or voiding.
           headers:
             Location:
-              description: Relative API path of the created transfer. A matching retry returns the original Location value.
+              description: Relative API path of the created transfer's transaction, viewed from its source Account. A matching retry returns the original Location value.
               schema:
                 type: string
                 format: uri-reference
-                pattern: ^/v1/transfers/txn_
-                example: /v1/transfers/txn_01k0d2f6h8j4m7n9p3q5r1s0vw
+                pattern: ^/v1/transactions/txn_
+                example: /v1/transactions/txn_01k0d2f6h8j4m7n9p3q5r1s0vw?account_id=acc_01jjftqbz0n1vzey0pqrq3qmnn
           content:
             application/json:
               schema:
@@ -1399,47 +1735,403 @@ paths:
                   request_id: req_01jj0m9w2k3n5p7q9r1s3t5v7w
         default:
           $ref: '#/components/responses/DefaultError'
-  /v1/transfers/{transfer_id}:
+  /v1/transfers/pk_bank_account/rate:
     get:
       tags:
         - Transfers
-      summary: Retrieve a transfer
+      summary: Retrieve the Customer's PKR rate
       description: |
         **Required scope:** `transfers:read`.
 
-        Fetch one transfer by ID, e.g. `/v1/transfers/txn_…`.
+        The rate the Customer gets from USD to PKR: the State Bank of Pakistan
+        rate with the Customer's pricing applied. It changes when State Bank of
+        Pakistan publishes a new rate, about once a Pakistani bank day, or when
+        the Customer's pricing changes.
 
-        This endpoint returns the outbound side when its source Customer is the authenticated
-        Customer. Otherwise it returns `404`.
-
-        For an internal movement, the same `txn_…` may also be retrievable from
-        `GET /v1/deposits/{deposit_id}` by the destination Customer. The transfer is retrievable as
-        soon as its `txn_…` exists and remains
-        retrievable through its terminal status.
-
-        When both Accounts belong to this Customer, the Transfer and Deposit
-        endpoints select the outbound and inbound views respectively without an
-        additional Account query parameter. Card activity has no Transfer resource.
-      operationId: getTransfer
+        Use it to show a price before an amount is entered, and send its `id` as
+        `fx_rate_id` when quoting.
+      operationId: getPkBankAccountFxRate
       x-required-scopes:
         - transfers:read
-      parameters:
-        - name: transfer_id
-          in: path
-          required: true
-          schema:
-            type: string
-            pattern: ^txn_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
-          example: txn_01k0d2f6h8j4m7n9p3q5r1s0vw
       responses:
         '200':
-          description: The transfer.
+          description: The Customer's rate.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerFxRate'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /v1/transfers/pk_bank_account/options:
+    get:
+      tags:
+        - Transfers
+      summary: List Pakistani bank account delivery options
+      description: |
+        **Required scope:** `transfers:read`.
+
+        List the delivery options the Customer can send to a Pakistani bank
+        account with, in the order to show them. Each has the fee schedule this
+        Customer pays and the currency it pays out in. An option Pocket has
+        turned off for the Customer is left out, so the list can be empty.
+
+        Options price no amount. To show a price as the Customer types, fetch the
+        rate from `GET /v1/transfers/pk_bank_account/rate` and compute:
+
+        - `fee = base_amount + min(percentage% × payin, cap_amount)`, rounded half
+          away from zero to two decimal places.
+        - `payout = (payin - fee) × rate`, rounded half to even to two decimal
+          places.
+
+        `POST /v1/transfers/pk_bank_account/quotes` returns Pocket's exact price,
+        so computing it yourself is optional.
+      operationId: listPkBankAccountTransferOptions
+      x-required-scopes:
+        - transfers:read
+      responses:
+        '200':
+          description: The Customer's delivery options.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferOptionList'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /v1/transfers/pk_bank_account/purpose_codes:
+    get:
+      tags:
+        - Transfers
+      summary: List Pakistani bank account purpose codes
+      description: |
+        **Required scope:** `transfers:read`.
+
+        List the State Bank of Pakistan purpose codes a transfer to a Pakistani
+        bank account can be reported under, ordered by `display_name`. Show
+        `display_name` and `description` to the Customer, and send the chosen
+        `code` as `purpose_code` to `POST /v1/transfers/pk_bank_account`.
+
+        The list is complete in one response but uses the standard list shape:
+        `has_more` is always `false`, and `next_cursor` is always `null`.
+      operationId: listPkBankAccountPurposeCodes
+      x-required-scopes:
+        - transfers:read
+      responses:
+        '200':
+          description: The purpose codes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PurposeCodeList'
+              example:
+                data:
+                  - code: '9471'
+                    display_name: Home Remittance
+                    description: Money sent back home for family support or personal transfers
+                  - code: '9186'
+                    display_name: IT Exports
+                    description: Income or foreign earnings from software development and IT services
+                has_more: false
+                next_cursor: null
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /v1/transfers/pk_bank_account/quotes:
+    post:
+      tags:
+        - Transfers
+      summary: Quote a transfer to a Pakistani bank account
+      description: |
+        **Required scope:** `transfers:read`.
+
+        Price sending `payin_amount` USD to a Pakistani bank account with a
+        delivery option, at `fx_rate_id`. Every transfer to a Counterparty is
+        created from a quote, which fixes its fee, rate and payout. Send one
+        transfer with it to `POST /v1/transfers/pk_bank_account` before
+        `expires_at`, five minutes after it's created. Nothing is held, and a
+        quote names no Counterparty or Account.
+
+        - `delivery_option_id` is an `id` from
+          `GET /v1/transfers/pk_bank_account/options`. Another type's option, an
+          option that isn't offered to the Customer, or a payin that doesn't cover
+          the fee returns `400 invalid_request`.
+        - `fx_rate_id` is the rate you computed with: the `id` from
+          `GET /v1/transfers/pk_bank_account/rate`. If it isn't the
+          Customer's current rate, the request returns `400` with
+          `details.code: fx_rate_expired`. Fetch the rate again and recompute.
+
+        Retrying a failed request creates a new quote, so this operation takes no
+        `Idempotency-Key`.
+      operationId: createPkBankAccountTransferQuote
+      x-required-scopes:
+        - transfers:read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTransferQuoteRequest'
+            example:
+              delivery_option_id: dlvo_01m5h2gvtyfdtajppbnseg4bqp
+              payin_amount: '100.00'
+              fx_rate_id: afxr_01k0d2f6h8j4m7n9p3q5r1s0vw
+      responses:
+        '201':
+          description: The quote.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferQuote'
+        '400':
+          $ref: '#/components/responses/CounterpartyTransferBadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /v1/transfers/pk_bank_account:
+    post:
+      tags:
+        - Transfers
+      summary: Send USD to a Pakistani bank account
+      description: |
+        **Required scope:** `transfers:write`.
+
+        Send a `pk_bank_account` quote's payin from an owned Account to an
+        `approved` `pk_bank_account` Counterparty, paid out in PKR at the quote's
+        price. Get the quote from `POST /v1/transfers/pk_bank_account/quotes`.
+
+        - A quote that has expired returns `400` with `details.code: quote_expired`.
+          Quote again.
+        - A quote another transfer used returns `409 conflict`.
+        - A quote for the other type returns `400 invalid_request`, and an unknown
+          one returns `404`.
+
+        `source_account_id` names the Account the money leaves; left out, it's the
+        Customer's default Account.
+
+        **Idempotency:** the `Idempotency-Key` header is required. For 24 hours, an
+        unchanged retry returns the saved initial `201` Transfer response and
+        `Location`, without sending money again. A changed request under the same key
+        returns `409` with `details.code: idempotency_conflict`.
+
+        `201 Created` confirms acceptance, not settlement. The Transfer's `method` is
+        `ibft` and its `destination` is the Counterparty. Poll its `Location`
+        for its status.
+      operationId: createPkBankAccountTransfer
+      x-required-scopes:
+        - transfers:write
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: |
+            Required, case-sensitive request key. Supply exactly one nonblank value
+            containing at most 255 Unicode code points, encoded as valid UTF-8 with
+            no NUL character. Missing, empty, blank, invalid or repeated header values
+            return `400` with `details.param` set to `Idempotency-Key`.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+            pattern: ^[^\x00]*[^\s\x00][^\x00]*$
+          example: d9f80740-7f8e-4f16-b5cc-4fd5bf7d3b21
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePkBankAccountTransferRequest'
+            example:
+              quote_id: tfrq_01k0d2f6h8j4m7n9p3q5r1s0vw
+              counterparty_id: tcp_01k0d2f6h8j4m7n9p3q5r1s0vw
+              purpose_code: '9471'
+      responses:
+        '201':
+          description: The created Transfer, or the saved initial response on an unchanged retry within 24 hours.
+          headers:
+            Location:
+              description: Relative API path of the created transfer's transaction, viewed from its source Account. A matching retry returns the original Location value.
+              schema:
+                type: string
+                format: uri-reference
+                pattern: ^/v1/transactions/txn_
+                example: /v1/transactions/txn_01k0d2f6h8j4m7n9p3q5r1s0vw?account_id=acc_01jjftqbz0n1vzey0pqrq3qmnn
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Transfer'
+        '400':
+          $ref: '#/components/responses/CounterpartyTransferBadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /v1/transfers/us_bank_account/rate:
+    get:
+      tags:
+        - Transfers
+      summary: Retrieve the Customer's USD rate
+      description: |
+        **Required scope:** `transfers:read`.
+
+        A US bank account is paid out in USD, so the rate is always `1`, under
+        the fixed `id` `afxr_01m5tfkcgqe7fssbgapzx38qpy`. Send it as `fx_rate_id`
+        when quoting, as for Pakistani bank account transfers, so every transfer
+        type is quoted the same way.
+      operationId: getUsBankAccountFxRate
+      x-required-scopes:
+        - transfers:read
+      responses:
+        '200':
+          description: The Customer's rate.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerFxRate'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /v1/transfers/us_bank_account/options:
+    get:
+      tags:
+        - Transfers
+      summary: List US bank account delivery options
+      description: |
+        **Required scope:** `transfers:read`.
+
+        List the delivery options the Customer can send to a US bank account
+        with, as for Pakistani bank account options. Compute a price with the
+        rate from `GET /v1/transfers/us_bank_account/rate`.
+      operationId: listUsBankAccountTransferOptions
+      x-required-scopes:
+        - transfers:read
+      responses:
+        '200':
+          description: The Customer's delivery options.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferOptionList'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /v1/transfers/us_bank_account/quotes:
+    post:
+      tags:
+        - Transfers
+      summary: Quote a transfer to a US bank account
+      description: |
+        **Required scope:** `transfers:read`.
+
+        Price sending `payin_amount` USD to a US bank account, as for Pakistani
+        bank account quotes, with an option from
+        `GET /v1/transfers/us_bank_account/options` and the rate from
+        `GET /v1/transfers/us_bank_account/rate`. Send one transfer with it to
+        `POST /v1/transfers/us_bank_account`.
+      operationId: createUsBankAccountTransferQuote
+      x-required-scopes:
+        - transfers:read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTransferQuoteRequest'
+            example:
+              delivery_option_id: dlvo_01m5h2gvv9fcp9wkqerckq5y0x
+              payin_amount: '100.00'
+              fx_rate_id: afxr_01m5tfkcgqe7fssbgapzx38qpy
+      responses:
+        '201':
+          description: The quote.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransferQuote'
+        '400':
+          $ref: '#/components/responses/CounterpartyTransferBadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/DefaultError'
+  /v1/transfers/us_bank_account:
+    post:
+      tags:
+        - Transfers
+      summary: Send USD to a US bank account
+      description: |
+        **Required scope:** `transfers:write`.
+
+        Send a `us_bank_account` quote's payin from an owned Account to an
+        `approved` `us_bank_account` Counterparty, at the quote's price. Quote
+        errors are as for Pakistani bank account transfers.
+
+        `source_account_id` names the Account the money leaves; left out, it's the
+        Customer's default Account. The `Idempotency-Key` header is required and
+        behaves as for Pakistani bank account transfers.
+
+        `201 Created` confirms acceptance, not settlement. The Transfer's `method` is
+        `ach` and its `destination` is the Counterparty.
+      operationId: createUsBankAccountTransfer
+      x-required-scopes:
+        - transfers:write
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: |
+            Required, case-sensitive request key. Supply exactly one nonblank value
+            containing at most 255 Unicode code points, encoded as valid UTF-8 with
+            no NUL character. Missing, empty, blank, invalid or repeated header values
+            return `400` with `details.param` set to `Idempotency-Key`.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+            pattern: ^[^\x00]*[^\s\x00][^\x00]*$
+          example: d9f80740-7f8e-4f16-b5cc-4fd5bf7d3b21
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUsBankAccountTransferRequest'
+            example:
+              quote_id: tfrq_01k0d2f6h8j4m7n9p3q5r1s0vw
+              counterparty_id: tcp_01k0d2f6h8j4m7n9p3q5r1s0vw
+      responses:
+        '201':
+          description: The created Transfer, or the saved initial response on an unchanged retry within 24 hours.
+          headers:
+            Location:
+              description: Relative API path of the created transfer's transaction, viewed from its source Account. A matching retry returns the original Location value.
+              schema:
+                type: string
+                format: uri-reference
+                pattern: ^/v1/transactions/txn_
+                example: /v1/transactions/txn_01k0d2f6h8j4m7n9p3q5r1s0vw?account_id=acc_01jjftqbz0n1vzey0pqrq3qmnn
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transfer'
+        '400':
+          $ref: '#/components/responses/CounterpartyTransferBadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         default:
           $ref: '#/components/responses/DefaultError'
   /v1/deposits:
@@ -1521,7 +2213,7 @@ paths:
 
         For an internal movement:
 
-        - The same `txn_…` may resolve at `GET /v1/transfers/{transfer_id}` for the source Customer.
+        - The same `txn_…` resolves at `GET /v1/transactions/{transaction_id}` for the source Customer.
         - The deposit is retrievable immediately after transaction creation, including while
           `pending`.
         - It remains retrievable after becoming `failed` or `voided`.
@@ -1980,6 +2672,15 @@ components:
         pattern: ^rcp_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
       description: The Recipient (`rcp_…`) owned by this business Customer.
       example: rcp_01k2p7m4sd6t8v0x3y5z9a1bcf
+    CounterpartyIdPath:
+      name: counterparty_id
+      in: path
+      required: true
+      schema:
+        type: string
+        pattern: ^tcp_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
+      description: The Counterparty (`tcp_…`) owned by the authenticated Customer.
+      example: tcp_01k0d2f6h8j4m7n9p3q5r1s0vw
     CreatedAfter:
       name: created_after
       in: query
@@ -2214,6 +2915,14 @@ components:
         - Cross-currency payouts may define separate destination-currency and foreign exchange
           (FX) fields.
       example: USD
+    FxRate:
+      type: string
+      maxLength: 32
+      pattern: ^(?:0\.[0-9]*[1-9][0-9]*|[1-9][0-9]*(?:\.[0-9]+)?)$
+      description: |
+        Positive decimal exchange rate as a JSON string. It states destination-currency units per
+        one source-currency unit. Use the returned value for reconciliation.
+      example: '280.00'
     Metadata:
       type: object
       description: |
@@ -2711,6 +3420,53 @@ components:
           type: string
           nullable: true
           description: Opaque cursor for the next page, or null on the final page.
+    PurposeCode:
+      type: object
+      required:
+        - code
+        - display_name
+        - description
+      description: Pocket-curated code for classifying one PKR IBFT payment.
+      properties:
+        code:
+          $ref: '#/components/schemas/PayoutPurposeCode'
+        display_name:
+          type: string
+          example: Compensation of employees
+        description:
+          type: string
+          example: Salary or other compensation paid to an employee.
+    PurposeCodeList:
+      type: object
+      required:
+        - data
+        - has_more
+        - next_cursor
+      description: Unpaginated V1 purpose-code envelope containing the complete matching set.
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PurposeCode'
+        has_more:
+          type: boolean
+          enum:
+            - false
+          description: Always `false`. This endpoint returns the complete result in `data`.
+        next_cursor:
+          type: string
+          nullable: true
+          enum:
+            - null
+          description: Always JSON `null`. This endpoint has no additional page.
+    PayoutPurposeCode:
+      type: string
+      pattern: ^[0-9]{4}$
+      description: |
+        State Bank of Pakistan purpose code classifying one PKR IBFT payment. Discover currently
+        supported codes with `GET /v1/transfers/pk_bank_account/purpose_codes`. The API validates
+        the selected code when Pocket creates the transfer.
+      example: '9291'
     CustomerReference:
       type: object
       required:
@@ -2762,6 +3518,8 @@ components:
         - Another owned Account, using `account_id`, for a same-Customer Account transfer.
         - An external instrument, using `instrument_id`, when that ID was recorded
           on supported historical outbound activity.
+        - A Counterparty, using `counterparty_id`, for a transfer to a bank account
+          outside Pocket (`ibft` or `ach`).
 
         Transfers created by the implemented internal-transfer endpoint have a
         non-null Customer or owned-Account destination. Historical activity may
@@ -2783,6 +3541,11 @@ components:
           pattern: ^epi_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
           description: An external instrument registered to the source Customer.
           example: epi_01jzjc7rmr2k988mgd9nrk1r1b
+        counterparty_id:
+          type: string
+          pattern: ^tcp_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
+          description: A Counterparty of the source Customer.
+          example: tcp_01k0d2f6h8j4m7n9p3q5r1s0vw
     TransactionSideReference:
       type: object
       nullable: true
@@ -2797,6 +3560,7 @@ components:
         - `account_id` for an owned Account.
         - `customer_id` for a Pocket Customer counterparty.
         - `instrument_id` for an external instrument.
+        - `counterparty_id` for a Counterparty, a bank account outside Pocket.
 
         An empty object is invalid. JSON `null` means this side has no Pocket resource visible to
         the caller, such as the external sender of a deposit, an unregistered counterparty on
@@ -2818,12 +3582,18 @@ components:
           pattern: ^epi_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
           description: The external instrument on this side of the money movement (`epi_…`).
           example: epi_01jzjc7rmr2k988mgd9nrk1r1b
+        counterparty_id:
+          type: string
+          pattern: ^tcp_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
+          description: The Counterparty on this side of the money movement (`tcp_…`).
+          example: tcp_01k0d2f6h8j4m7n9p3q5r1s0vw
     Method:
       type: string
       description: |
         How the money traveled. Adding a method requires a specification and client update.
         These values classify visible activity; they do not enable creation on
-        those rails. Only internal transfer creation is implemented in this release.
+        those rails by themselves. Transfers can be created as `internal`, and as `ibft`
+        or `ach` to a Counterparty.
 
         - `internal`: Pocket-to-Pocket book movement.
         - `ach` and `wire`: inbound bank payments and outbound payouts.
@@ -2843,7 +3613,7 @@ components:
         - card
     TransferMethod:
       type: string
-      description: The enum lists accepted method values for Transfer reads and filters, not available creation endpoints. Only internal transfer creation is implemented. Card spends are feed-only and do not have Transfer objects.
+      description: The enum lists accepted method values for Transfer reads and filters, not available creation endpoints. Transfers can be created as `internal`, and as `ibft` or `ach` to a Counterparty. Card spends are feed-only and do not have Transfer objects.
       enum:
         - internal
         - ach
@@ -3794,6 +4564,550 @@ components:
               type: array
               items:
                 $ref: '#/components/schemas/Balance'
+    CounterpartyType:
+      type: string
+      description: |
+        How a Counterparty's account is identified.
+
+        - `pk_bank_account`: a bank or wallet account in Pakistan, paid in PKR.
+        - `us_bank_account`: a checking or savings account at a US bank, paid in USD.
+      enum:
+        - pk_bank_account
+        - us_bank_account
+    CounterpartyStatus:
+      type: string
+      description: |
+        - `in_review`: Pocket is reviewing the Counterparty. It can't receive transfers yet.
+        - `approved`: it can receive transfers.
+        - `declined`: Pocket won't send to it. `status_reason` says why when known.
+        - `deleted`: removed by the Customer, or replaced by an update.
+      enum:
+        - in_review
+        - approved
+        - declined
+        - deleted
+    AccountHolderType:
+      type: string
+      description: Whether the account holder is a person or a business.
+      enum:
+        - individual
+        - business
+    Counterparty:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - type
+        - currency
+        - status
+        - status_reason
+        - replaces_counterparty_id
+        - attributes
+        - created_at
+      description: |
+        A bank account outside Pocket that the authenticated Customer can send
+        transfers to. Account numbers are masked to their last four characters.
+      properties:
+        id:
+          type: string
+          pattern: ^tcp_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
+          example: tcp_01k0d2f6h8j4m7n9p3q5r1s0vw
+        type:
+          $ref: '#/components/schemas/CounterpartyType'
+        currency:
+          type: string
+          description: The currency the Counterparty is paid in.
+          enum:
+            - PKR
+            - USD
+        status:
+          $ref: '#/components/schemas/CounterpartyStatus'
+        status_reason:
+          type: string
+          nullable: true
+          description: Why the status was set, when there's a reason to give.
+        replaces_counterparty_id:
+          type: string
+          nullable: true
+          pattern: ^tcp_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
+          description: The Counterparty this one replaced in an update.
+        attributes:
+          description: The account's details, shaped by `type`.
+          oneOf:
+            - $ref: '#/components/schemas/PkBankAccountCounterpartyAttributes'
+            - $ref: '#/components/schemas/UsBankAccountCounterpartyAttributes'
+        created_at:
+          type: string
+          format: date-time
+          description: RFC 3339 / ISO 8601 timestamp in UTC.
+          example: '2026-07-31T09:00:00Z'
+    PkBankAccountCounterpartyAttributes:
+      type: object
+      additionalProperties: false
+      required:
+        - account_holder_name
+        - account_holder_type
+        - govid_type
+        - bank_name
+        - iban_last4
+        - account_title
+      properties:
+        account_holder_name:
+          type: string
+          example: Ayesha Khan
+        account_holder_type:
+          $ref: '#/components/schemas/AccountHolderType'
+        govid_type:
+          type: string
+          nullable: true
+          description: The kind of government ID on file. Its value is never returned.
+          enum:
+            - cnic
+            - business_registration_number
+            - null
+        bank_name:
+          type: string
+          description: The bank the IBAN belongs to.
+          example: Habib Bank Limited
+        iban_last4:
+          type: string
+          example: '6702'
+        account_title:
+          type: string
+          nullable: true
+          description: The account holder's name as the bank reports it, once Pocket has checked it.
+    UsBankAccountCounterpartyAttributes:
+      type: object
+      additionalProperties: false
+      required:
+        - account_holder_name
+        - account_holder_type
+        - routing_number
+        - account_number_last4
+        - account_type
+        - address_line1
+        - address_line2
+        - address_city
+        - address_state
+        - address_postal_code
+        - address_country
+      properties:
+        account_holder_name:
+          type: string
+          example: Acme Supplies LLC
+        account_holder_type:
+          $ref: '#/components/schemas/AccountHolderType'
+        routing_number:
+          type: string
+          pattern: ^[0-9]{9}$
+          example: '021000021'
+        account_number_last4:
+          type: string
+          example: '6789'
+        account_type:
+          type: string
+          enum:
+            - checking
+            - savings
+        address_line1:
+          type: string
+        address_line2:
+          type: string
+          nullable: true
+        address_city:
+          type: string
+        address_state:
+          type: string
+        address_postal_code:
+          type: string
+        address_country:
+          type: string
+    CounterpartyList:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Counterparty'
+    GovId:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - value
+      description: The account holder's government ID. Pocket stores it and never returns its value.
+      properties:
+        type:
+          type: string
+          enum:
+            - cnic
+            - business_registration_number
+        value:
+          type: string
+          minLength: 1
+          example: '3520212345678'
+    CreatePkBankAccountCounterpartyRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - account_holder_name
+        - account_holder_type
+        - iban
+      properties:
+        account_holder_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        account_holder_type:
+          $ref: '#/components/schemas/AccountHolderType'
+        govid:
+          $ref: '#/components/schemas/GovId'
+        iban:
+          type: string
+          minLength: 1
+          description: The account's IBAN. Spaces and lowercase letters are accepted.
+          example: PK36HABB0000001123456702
+    CreateUsBankAccountCounterpartyRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - account_holder_name
+        - account_holder_type
+        - routing_number
+        - account_number
+        - account_type
+        - address_line1
+        - address_city
+        - address_state
+        - address_postal_code
+        - address_country
+      properties:
+        account_holder_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        account_holder_type:
+          $ref: '#/components/schemas/AccountHolderType'
+        routing_number:
+          type: string
+          pattern: ^[0-9]{9}$
+        account_number:
+          type: string
+          minLength: 1
+          maxLength: 17
+          description: Leading and trailing whitespace is removed.
+        account_type:
+          type: string
+          enum:
+            - checking
+            - savings
+        address_line1:
+          type: string
+          minLength: 1
+        address_line2:
+          type: string
+        address_city:
+          type: string
+          minLength: 1
+        address_state:
+          type: string
+          minLength: 1
+        address_postal_code:
+          type: string
+          minLength: 1
+        address_country:
+          type: string
+          minLength: 1
+    UpdatePkBankAccountCounterpartyRequest:
+      type: object
+      additionalProperties: false
+      description: The fields to change. A field left out keeps its current value.
+      properties:
+        account_holder_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        account_holder_type:
+          $ref: '#/components/schemas/AccountHolderType'
+        govid:
+          $ref: '#/components/schemas/GovId'
+        iban:
+          type: string
+          minLength: 1
+    UpdateUsBankAccountCounterpartyRequest:
+      type: object
+      additionalProperties: false
+      description: The fields to change. A field left out keeps its current value; an empty `address_line2` removes it.
+      properties:
+        account_holder_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        account_holder_type:
+          $ref: '#/components/schemas/AccountHolderType'
+        routing_number:
+          type: string
+          pattern: ^[0-9]{9}$
+        account_number:
+          type: string
+          minLength: 1
+          maxLength: 17
+          description: Leading and trailing whitespace is removed.
+        account_type:
+          type: string
+          enum:
+            - checking
+            - savings
+        address_line1:
+          type: string
+          minLength: 1
+        address_line2:
+          type: string
+        address_city:
+          type: string
+          minLength: 1
+        address_state:
+          type: string
+          minLength: 1
+        address_postal_code:
+          type: string
+          minLength: 1
+        address_country:
+          type: string
+          minLength: 1
+    CustomerFxRate:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - payin_currency
+        - payout_currency
+        - value
+        - timestamp
+      description: |
+        The rate the authenticated Customer gets from USD to `payout_currency`. A
+        PKR rate is the State Bank of Pakistan rate with the Customer's pricing
+        applied. A USD rate is always `1`, under the fixed `id`
+        `afxr_01m5tfkcgqe7fssbgapzx38qpy`.
+      properties:
+        id:
+          type: string
+          pattern: ^afxr_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
+          description: Send as `fx_rate_id` when quoting a transfer.
+          example: afxr_01k0d2f6h8j4m7n9p3q5r1s0vw
+        payin_currency:
+          type: string
+          enum:
+            - USD
+        payout_currency:
+          type: string
+          enum:
+            - PKR
+            - USD
+        value:
+          $ref: '#/components/schemas/FxRate'
+        timestamp:
+          type: string
+          format: date-time
+          description: When the underlying rate was published.
+    FeeSchedule:
+      type: object
+      additionalProperties: false
+      required:
+        - percentage
+        - base_amount
+      description: |
+        What a delivery option costs, in the payin currency, USD. For a payin, the
+        fee is `base_amount + min(percentage% × payin, cap_amount)`, rounded half
+        away from zero to two decimal places. With no `cap_amount`, the percentage
+        portion is uncapped.
+      properties:
+        percentage:
+          type: string
+          pattern: ^(0|[1-9][0-9]{0,2})(\.[0-9]+)?$
+          description: On a 0 to 100 scale, so `1` is 1%.
+          example: '1'
+        base_amount:
+          $ref: '#/components/schemas/MoneyAmount'
+        cap_amount:
+          $ref: '#/components/schemas/MoneyAmount'
+    TransferOption:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - description
+        - payout_currency
+        - estimated_arrival_at
+        - fee_schedule
+      description: A delivery option the Customer can send with, and what it costs them.
+      properties:
+        id:
+          type: string
+          pattern: ^dlvo_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
+          description: Send as `delivery_option_id` when quoting a transfer.
+          example: dlvo_01m5h2gvtyfdtajppbnseg4bqp
+        name:
+          type: string
+          description: Text to show for the option.
+          example: Standard
+        description:
+          type: string
+          description: One line to show under the name.
+          example: Arrives within 2 Pakistani bank days.
+        payout_currency:
+          type: string
+          description: What the Counterparty receives. Fetch this currency's rate to compute a payout.
+          enum:
+            - PKR
+            - USD
+        estimated_arrival_at:
+          type: string
+          format: date-time
+          description: When money sent now is estimated to arrive.
+        fee_schedule:
+          $ref: '#/components/schemas/FeeSchedule'
+    TransferOptionList:
+      type: object
+      additionalProperties: false
+      required:
+        - data
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TransferOption'
+    CreateTransferQuoteRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - delivery_option_id
+        - payin_amount
+        - fx_rate_id
+      properties:
+        delivery_option_id:
+          type: string
+          pattern: ^dlvo_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
+          description: An `id` from the transfer type's `options`.
+        payin_amount:
+          $ref: '#/components/schemas/WriteAmount'
+        fx_rate_id:
+          type: string
+          pattern: ^afxr_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
+          description: The `id` from the transfer type's `rate`.
+    TransferQuote:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - type
+        - delivery_option_id
+        - payin_amount
+        - fee_amount
+        - payout_amount
+        - payout_currency
+        - fx_rate_id
+        - fx_rate
+        - estimated_arrival_at
+        - expires_at
+        - created_at
+      description: |
+        The price of one transfer. Create one transfer of `type` from it before
+        `expires_at`.
+      properties:
+        id:
+          type: string
+          pattern: ^tfrq_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
+          description: Send as `quote_id` when creating the transfer.
+          example: tfrq_01k0d2f6h8j4m7n9p3q5r1s0vw
+        type:
+          type: string
+          enum:
+            - pk_bank_account
+            - us_bank_account
+          description: The Counterparty type the quote can be sent to.
+        delivery_option_id:
+          type: string
+          pattern: ^dlvo_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
+          example: dlvo_01m5h2gvtyfdtajppbnseg4bqp
+        payin_amount:
+          $ref: '#/components/schemas/MoneyAmount'
+        fee_amount:
+          $ref: '#/components/schemas/MoneyAmount'
+        payout_amount:
+          $ref: '#/components/schemas/MoneyAmount'
+        payout_currency:
+          type: string
+          enum:
+            - PKR
+            - USD
+        fx_rate_id:
+          type: string
+          pattern: ^afxr_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
+        fx_rate:
+          $ref: '#/components/schemas/FxRate'
+        estimated_arrival_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          description: Exclusive. A transfer can't be created from the quote at or after it.
+        created_at:
+          type: string
+          format: date-time
+    CreatePkBankAccountTransferRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - quote_id
+        - counterparty_id
+        - purpose_code
+      properties:
+        quote_id:
+          type: string
+          pattern: ^tfrq_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
+          description: A `pk_bank_account` quote that hasn't expired or been used.
+        source_account_id:
+          type: string
+          pattern: ^acc_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
+          description: The owned Account the money leaves. Left out, it's the Customer's default Account.
+        counterparty_id:
+          type: string
+          pattern: ^tcp_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
+        purpose_code:
+          type: string
+          description: |
+            The State Bank of Pakistan purpose code the transfer is reported under,
+            from `GET /v1/transfers/pk_bank_account/purpose_codes`.
+
+            - `9471`: home remittance, for family support or personal transfers.
+            - `9186`: IT exports, for software development and IT services income.
+          enum:
+            - '9471'
+            - '9186'
+    CreateUsBankAccountTransferRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - quote_id
+        - counterparty_id
+      properties:
+        quote_id:
+          type: string
+          pattern: ^tfrq_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
+          description: A `us_bank_account` quote that hasn't expired or been used.
+        source_account_id:
+          type: string
+          pattern: ^acc_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
+          description: The owned Account the money leaves. Left out, it's the Customer's default Account.
+        counterparty_id:
+          type: string
+          pattern: ^tcp_[0-7][0-9abcdefghjkmnpqrstvwxyz]{25}$
     ErrorCode:
       type: string
       description: Stable, machine-readable error code. Preserve unknown values and fall back to the HTTP status. See Errors for the current code catalog.
@@ -3880,7 +5194,7 @@ components:
           example: req_01jj0m9w2k3n5p7q9r1s3t5v7w
         existing_id:
           type: string
-          description: Reserved optional field. Current V1 idempotency conflicts do not return an existing resource ID; save IDs from successful responses.
+          description: The existing resource a conflict is about, such as the Counterparty already on an account. Idempotency conflicts do not return it; save IDs from successful responses.
         failures:
           type: array
           minItems: 1
@@ -4242,6 +5556,10 @@ components:
         details:
           code: insufficient_funds
           request_id: req_01jj0m9w2k3n5p7q9r1s3t5v7w
+    IdempotencyConflictError:
+      description: On this error `param` is `idempotency_key`.
+      allOf:
+        - $ref: '#/components/schemas/Error'
     InternalTransferDestination:
       type: object
       additionalProperties: false
@@ -4268,8 +5586,7 @@ components:
         `429`, `500` or `503`. A listed response takes precedence. Maintenance
         uses `details.maintenance: true` and `details.retry_after_seconds`;
         it need not include `details.code` or `details.request_id`. See the
-        [common HTTP status table](https://docs.pocketmoney.global/relay/#errors)
-        for meanings and retry guidance.
+        [common HTTP status table](https://docs.pocketmoney.global/relay/#errors) for meanings and retry guidance.
       headers:
         Retry-After:
           description: Optional number of seconds to wait before retrying.
@@ -4423,6 +5740,45 @@ components:
             anyOf:
               - $ref: '#/components/schemas/InvalidRequestError'
               - $ref: '#/components/schemas/BatchRecipientPolicyError'
+    CounterpartyConflict:
+      description: |
+        The request conflicts with the Customer's Counterparties. Outer code
+        `already_exists` with `details.code: conflict` means another non-deleted
+        Counterparty is on the same account; `details.existing_id` names it. Outer code
+        `aborted` with `details.code: conflict` means the Counterparty was already
+        updated, or is `declined` or `in_review`; `message` says which.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: already_exists
+            message: A counterparty with identical account details already exists.
+            details:
+              code: conflict
+              existing_id: tcp_01k0d2f6h8j4m7n9p3q5r1s0vw
+              request_id: req_01jj0m9w2k3n5p7q9r1s3t5v7w
+    CounterpartyTransferBadRequest:
+      description: |
+        The transfer can't be quoted or sent as requested. `details.code` is one of:
+
+        - `invalid_request`: a field is missing or malformed, the delivery option
+          isn't offered to the Customer, the payin doesn't cover the fee, or the
+          quote or Counterparty is of another type.
+        - `fx_rate_expired`: when quoting, `fx_rate_id` isn't the Customer's current
+          rate. Fetch it again and recompute.
+        - `quote_expired`: when sending, the quote has expired. Quote again.
+        - `counterparty_not_approved`: the Counterparty isn't `approved`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: failed_precondition
+            message: The counterparty is not approved.
+            details:
+              code: counterparty_not_approved
+              request_id: req_01jj0m9w2k3n5p7q9r1s3t5v7w
     Forbidden:
       description: |
         The API key cannot complete this action on a visible resource. Common causes are:
@@ -4450,6 +5806,16 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/InsufficientFundsError'
+    Conflict:
+      description: |
+        The request conflicts with resource state or idempotency state. Inspect `code` to determine
+        the cause.
+      content:
+        application/json:
+          schema:
+            anyOf:
+              - $ref: '#/components/schemas/Error'
+              - $ref: '#/components/schemas/IdempotencyConflictError'
 x-pocket-api-major: 1
 x-tagGroups:
   - name: API resources
@@ -4457,6 +5823,7 @@ x-tagGroups:
       - Accounts
       - Balances
       - Recipients
+      - Counterparties
       - Transactions
       - Transfers
       - Deposits

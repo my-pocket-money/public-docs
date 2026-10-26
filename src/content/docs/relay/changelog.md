@@ -5,6 +5,70 @@ sidebar:
   order: 3
 ---
 
+## 0.7.0 — Sandbox release candidate
+
+Adds Counterparties and transfers to them: 16 new operations. Transfers are
+now read as transactions, so `GET /v1/transfers/{transfer_id}` is removed, for
+38 operations in all. Transfer lists now include transfers to Counterparties.
+
+### Breaking changes
+
+- `GET /v1/transfers/{transfer_id}` is removed. A transfer is a transaction:
+  read it with `GET /v1/transactions/{transaction_id}`, which needs
+  `transactions:read`.
+- A created transfer's `Location` is
+  `/v1/transactions/{transaction_id}?account_id={source_account_id}`, the
+  transaction viewed from its source Account, instead of
+  `/v1/transfers/{transfer_id}`.
+
+### Counterparties
+
+A Counterparty (`tcp_…`) is a bank account outside Pocket that the Customer can
+send transfers to: a `pk_bank_account` in Pakistan, paid in PKR, or a
+`us_bank_account`, paid in USD. New scopes `counterparties:read` and
+`counterparties:write` guard them.
+
+| Operation | Method and path |
+| --- | --- |
+| List Counterparties | `GET /v1/counterparties` |
+| Create a Pakistani bank account Counterparty | `POST /v1/transfers/pk_bank_account/counterparties` |
+| Create a US bank account Counterparty | `POST /v1/transfers/us_bank_account/counterparties` |
+| Update a Pakistani bank account Counterparty | `PATCH /v1/transfers/pk_bank_account/counterparties/{counterparty_id}` |
+| Update a US bank account Counterparty | `PATCH /v1/transfers/us_bank_account/counterparties/{counterparty_id}` |
+| Retrieve a Counterparty | `GET /v1/counterparties/{counterparty_id}` |
+| Delete a Counterparty | `DELETE /v1/counterparties/{counterparty_id}` |
+
+### Transfers to Counterparties
+
+| Operation | Method and path |
+| --- | --- |
+| Retrieve the Customer's PKR rate | `GET /v1/transfers/pk_bank_account/rate` |
+| List Pakistani bank account delivery options | `GET /v1/transfers/pk_bank_account/options` |
+| List Pakistani bank account purpose codes | `GET /v1/transfers/pk_bank_account/purpose_codes` |
+| Quote a transfer to a Pakistani bank account | `POST /v1/transfers/pk_bank_account/quotes` |
+| Send USD to a Pakistani bank account | `POST /v1/transfers/pk_bank_account` |
+| Retrieve the Customer's USD rate | `GET /v1/transfers/us_bank_account/rate` |
+| List US bank account delivery options | `GET /v1/transfers/us_bank_account/options` |
+| Quote a transfer to a US bank account | `POST /v1/transfers/us_bank_account/quotes` |
+| Send USD to a US bank account | `POST /v1/transfers/us_bank_account` |
+
+Prices are per Customer. `GET /v1/transfers/{type}/rate` and
+`GET /v1/transfers/{type}/options` give the Customer's rate and each option's
+fee schedule, so a price can be shown before an amount is entered. Every
+transfer is created from a quote, which fixes its fee, rate and payout for five
+minutes.
+
+These Transfers have `method` `ibft` or `ach`, and `destination.counterparty_id`.
+`TransferDestination` and `TransactionSideReference` gain `counterparty_id`.
+
+### Adopting 0.7.0
+
+Regenerate clients from this contract. Accept `counterparty_id` as a Transfer
+destination, and the new error codes `fx_rate_expired`, `quote_expired`,
+`counterparty_not_approved` and `conflict`. Read transfers with
+`GET /v1/transactions/{transaction_id}`, or follow the `Location` a create
+returns, and grant `transactions:read` to keys that do.
+
 ## 0.6.1 — Sandbox release candidate
 
 ### Breaking changes

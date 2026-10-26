@@ -8,7 +8,7 @@ deployment. Run the commands below from the repository root, after
 
 ## Before the first production release
 
-0.6.1 is the current Sandbox release candidate; API paths remain `/v1`.
+0.7.0 is the current Sandbox release candidate; API paths remain `/v1`.
 
 V1 uses a resettable development baseline before its first production release.
 After an accepted contract change:

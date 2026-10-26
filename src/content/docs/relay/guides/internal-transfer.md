@@ -59,8 +59,9 @@ timestamps. Reusing an expired key can create another transfer.
 `201 Created` means the payment was accepted. While pending, the source amount
 is reserved and its available balance decreases; the destination is not yet
 credited. Settlement posts the source debit and destination credit. Failure or
-voiding releases the reservation without a destination credit. Use
-`GET /v1/transfers/{transfer_id}` with `transfers:read` to observe current state.
+voiding releases the reservation without a destination credit. Follow
+`Location`, `GET /v1/transactions/{transaction_id}` with `transactions:read`, to
+observe current state.
 For an owned-Account move, the transaction feed contains both Account views.
 
 Transfers between your own Accounts are not subject to the 30-day sending limit.

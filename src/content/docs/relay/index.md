@@ -14,8 +14,10 @@ and activity.
 - An **Account** (`acc_…`) holds a Customer's funds and has its own ID.
   A Customer can own multiple Accounts in the same currency.
 - A **Recipient** is another Pocket Customer saved for future transfers.
-- A **Transfer** is an outbound movement from an owned Account, either to
-  another owned Account or to another Pocket Customer.
+- A **Counterparty** (`tcp_…`) is a bank account outside Pocket, in Pakistan or
+  the US, saved to send transfers to.
+- A **Transfer** is an outbound movement from an owned Account: to another owned
+  Account, to another Pocket Customer, or to a Counterparty.
 - A **Deposit** is the inbound view of a movement into an owned Account.
 - A **Batch** groups one or more Customer-to-Customer transfers for submission
   and reconciliation.
@@ -31,12 +33,13 @@ SDKs. Browse it in the [API reference](/relay/api/), or download
 | Accounts | Create, list, retrieve and label the Customer's funds containers. |
 | Balances | Read current funds by Account. |
 | Recipients | Manage a business Customer's payout roster. |
+| Counterparties | Save and review bank accounts outside Pocket to send transfers to. |
 | Transactions | Read inbound and outbound activity together. |
-| Transfers | Create and reconcile same-Customer Account transfers and Customer-to-Customer P2P. |
+| Transfers | Create and reconcile same-Customer Account transfers, Customer-to-Customer P2P, and transfers to Counterparties. |
 | Deposits | Reconcile money received by the Customer. |
 | Batch transfers | Submit and reconcile asynchronous Customer-to-Customer payouts. |
 
-Specification **0.6.1** uses the existing `/v1` paths. This is the Sandbox
+Specification **0.7.0** uses the existing `/v1` paths. This is the Sandbox
 release candidate; it does not establish what is deployed to production.
 
 ## Environments
@@ -61,8 +64,9 @@ curl 'https://api.relay.sandbox.pocketmoney.global/v1/accounts' \
 
 ## Supported scope and availability
 
-The release contains **23 public operations** across the seven resource
-families above. New Accounts, internal Transfers and Batches use **USD**.
+The release contains **38 public operations** across the eight resource
+families above. New Accounts, Transfers and Batches use **USD**; a transfer to a
+Pakistani bank account is paid out in PKR.
 An Account's owner, currency and default designation cannot
 be changed through these endpoints. Account updates change the label, reference
 and metadata.
@@ -89,7 +93,8 @@ active, unblocked business Customer. Pending, suspended, closed, blocked or
 non-business Customers cannot use those business-only operations.
 
 The key must also contain every scope named by the operation. The V1 scopes are
-`accounts:read`, `accounts:write`, `balances:read`, `recipients:read`, `recipients:write`, `transactions:read`,
+`accounts:read`, `accounts:write`, `balances:read`, `recipients:read`, `recipients:write`,
+`counterparties:read`, `counterparties:write`, `transactions:read`,
 `transfers:read`, `transfers:write`, `deposits:read`, `batches:read` and
 `batches:write`. Broad `read` grants every read scope; broad `write` grants
 every read and write scope. Each granular write scope also grants its matching
@@ -127,7 +132,10 @@ balance and activity views follow the response schemas; a zero balance is valid.
 ## Idempotency
 
 Send the request key in the **`Idempotency-Key` HTTP header**, not in JSON.
-Create Account, Recipient, Transfer and Batch require it. Account PATCH,
+Create Account, Recipient, Transfer and Batch require it. Create Counterparty
+doesn't take one: a retried create returns `409` with the existing
+Counterparty's ID. Quoting a transfer doesn't take one either: a retry makes
+another quote, and a quote can be used by one transfer. Account PATCH,
 Recipient PUT and Recipient DELETE accept it optionally; omitting it does not
 provide saved-response protection. Keep the same key and input for retries of
 one operation. Do not generate a new key merely because the connection timed out.
@@ -148,6 +156,7 @@ After a request succeeds, matching retries within 24 hours return the original r
 | Replace Recipient | `200` Recipient body from that replacement, even after later edits or removal. |
 | Remove Recipient | `204`, without removing a subsequently re-added Recipient. |
 | Create internal Transfer | Initial `201` Transfer body and `Location`, even after settlement or failure. |
+| Create a Transfer to a Counterparty | Initial `201` Transfer body and `Location`, even after settlement or failure. |
 | Create Batch | Initial `202` Batch body and `Location`, with the original counts. |
 
 Replay does not reapply an edit, restore a removed Recipient or send money again.
@@ -184,12 +193,12 @@ provided for support.
 
 | HTTP status | Meaning and next step |
 | --- | --- |
-| `400` | Invalid fields, IDs, filters or cursor; inspect `details.param` and correct the request. Recipient policy rejection can include per-item `failures`. |
+| `400` | Invalid fields, IDs, filters or cursor; inspect `details.param` and correct the request. Recipient policy rejection can include per-item `failures`. A transfer to a Counterparty can also return `fx_rate_expired`, `quote_expired` or `counterparty_not_approved`. |
 | `401` | Missing, invalid, expired or revoked API credential, or wrong audience. Check the environment and key. |
 | `402` | Direct Transfer rejected for insufficient available funds (`insufficient_funds`); no accepted Transfer is returned. |
 | `403` | Insufficient scopes, Customer eligibility or permission. Retrying the same request does not grant access. |
 | `404` | Resource missing or not visible to this Customer. Recipient resolution can use `recipient_not_found` without revealing the private cause. |
-| `409` | State conflict or live-key input mismatch. Idempotency conflicts use outer `aborted`, reason `idempotency_conflict` and parameter `Idempotency-Key`; no `existing_id` is supplied. |
+| `409` | State conflict or live-key input mismatch. Idempotency conflicts use outer `aborted`, reason `idempotency_conflict` and parameter `Idempotency-Key`; no `existing_id` is supplied. A Counterparty conflict uses reason `conflict` and names the existing Counterparty in `existing_id`. |
 | `429` | Rate or rolling-send limit (`rate_limited`). Respect `Retry-After` when present; no fixed requests-per-second allowance is promised. |
 | `500` | Internal failure; reconcile an uncertain mutation and retry with the same key within its replay window. |
 | `503` | Temporary dependency unavailability or maintenance. Back off and use the same intent/key when retrying. |
