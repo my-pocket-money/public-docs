@@ -1,12 +1,13 @@
-/* Pocket Money Docs. Colors and type follow the Relay dashboard
-   (my-pocket-money/pocket-relay src/styles.css): Outfit, and neutrals tinted
-   to the brand violet's hue, 286. Starlight's styles sit in cascade layers,
-   so these unlayered rules win without extra specificity. */
+/* Pocket Money Docs. Colors follow the Relay dashboard
+   (my-pocket-money/pocket-relay src/styles.css): neutrals tinted to the brand
+   violet's hue, 286. Text is Inter, drawn for reading on screens; the
+   dashboard's Outfit sets only the wordmark. Starlight's styles sit in cascade
+   layers, so these unlayered rules win without extra specificity. */
 
 /* ---------------------------------------------------------------- Tokens */
 
 :root {
-	--sl-font: 'Outfit Variable';
+	--sl-font: 'Inter Variable';
 	--sl-font-mono: 'JetBrains Mono Variable';
 
 	/* Dark. Starlight names its scale from the dark theme: white is text,
@@ -84,6 +85,7 @@
 body {
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
+	font-optical-sizing: auto;
 }
 
 /* ---------------------------------------------------------------- Header */
@@ -144,6 +146,7 @@ button.sl-menu-button {
 .site-title {
 	gap: 0.625rem;
 	color: var(--sl-color-white);
+	font-family: 'Outfit Variable', var(--__sl-font);
 	font-size: 1.125rem;
 	font-weight: 600;
 	letter-spacing: -0.01em;
@@ -216,10 +219,6 @@ site-search button[data-open-modal]:hover {
 	color: var(--sl-color-white);
 	font-weight: 600;
 	letter-spacing: -0.02em;
-}
-
-.content-panel h1 {
-	letter-spacing: -0.03em;
 }
 
 .sl-markdown-content a {

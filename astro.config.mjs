@@ -38,7 +38,13 @@ export default defineConfig({
 			favicon: '/favicon.svg',
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/my-pocket-money/public-docs' }],
 			editLink: { baseUrl: 'https://github.com/my-pocket-money/public-docs/edit/main/' },
-			customCss: ['@fontsource-variable/outfit', '@fontsource-variable/jetbrains-mono', './src/styles/public-docs.css'],
+			customCss: [
+				// Inter with its optical-size axis for reading; Outfit for the wordmark only.
+				'@fontsource-variable/inter/opsz.css',
+				'@fontsource-variable/outfit',
+				'@fontsource-variable/jetbrains-mono',
+				'./src/styles/public-docs.css',
+			],
 			components: {
 				Head: './src/components/Head.astro',
 				Header: './src/components/Header.astro',
