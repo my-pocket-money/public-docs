@@ -25,7 +25,8 @@
     "astro": "^7.2.10",
     "sharp": "^0.35.3",
     "starlight-links-validator": "^0.27.0",
-    "starlight-sidebar-topics": "^0.9.0"
+    "starlight-sidebar-topics": "^0.9.0",
+    "yaml": "2.9.1"
   },
   "devDependencies": {
     "@redocly/cli": "2.40.0"

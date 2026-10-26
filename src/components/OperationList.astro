@@ -1,0 +1,50 @@
+---
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { parse } from 'yaml';
+
+// Lists one tag's operations, read from the locked release contract at build
+// time, each linking to its section of the Scalar reference. The list follows
+// the contract, so it can't drift from the reference.
+interface Props {
+	/** The release contract, relative to the repository root. */
+	spec: string;
+	/** Where Scalar renders that contract. */
+	reference: string;
+	/** The tag whose operations to list, in contract order. */
+	tag: string;
+}
+
+const { spec, reference, tag } = Astro.props;
+// Builds run from the repository root; a bundled component's own URL points into dist/.
+const document = parse(await readFile(resolve(process.cwd(), spec), 'utf8'));
+const methods = ['get', 'post', 'put', 'patch', 'delete'];
+
+// Scalar's anchors: #tag/<tag slug>/<METHOD><path>.
+const tagSlug = tag.toLowerCase().replace(/\s+/g, '-');
+const operations = Object.entries(document.paths).flatMap(([path, item]: [string, any]) =>
+	methods
+		.filter((method) => item[method]?.tags?.includes(tag))
+		.map((method) => ({
+			method: method.toUpperCase(),
+			path,
+			summary: item[method].summary,
+			href: `${reference}#tag/${tagSlug}/${method.toUpperCase()}${path}`,
+		})),
+);
+if (operations.length === 0) throw new Error(`OperationList: no operations tagged "${tag}" in ${spec}`);
+---
+
+<ul class="pm-operations not-content">
+	{
+		operations.map((op) => (
+			<li>
+				<a href={op.href}>
+					<span class={`pm-method pm-method--${op.method.toLowerCase()}`}>{op.method}</span>
+					<span class="pm-operation-summary">{op.summary}</span>
+					<code>{op.path}</code>
+				</a>
+			</li>
+		))
+	}
+</ul>

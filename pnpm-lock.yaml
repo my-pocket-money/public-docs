@@ -196,6 +196,9 @@ importers:
       starlight-sidebar-topics:
         specifier: ^0.9.0
         version: 0.9.0(@astrojs/starlight@0.42.7(astro@7.4.2(@types/node@24.19.2)(yaml@2.9.1))(supports-color@10.2.2))(astro@7.4.2(@types/node@24.19.2)(yaml@2.9.1))
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
     devDependencies:
       '@redocly/cli':
         specifier: 2.40.0

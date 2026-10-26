@@ -65,6 +65,7 @@ export default defineConfig({
 						link: '/relay/',
 						items: [
 							'relay',
+							'relay/transfers',
 							{ label: 'Guides', items: [{ autogenerate: { directory: 'relay/guides' } }] },
 							'relay/changelog',
 						],
